@@ -18,15 +18,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libglib2.0-dev libx11-dev libxrandr-dev libxtst-dev libxext-dev \
         libxinerama-dev libxcb1-dev libxcb-shm0-dev libx11-xcb-dev \
         libpulse-dev libcairo2-dev libpango1.0-dev libjson-glib-dev \
+        libgtk-3-dev \
         libswscale-dev libdrm-dev libgbm-dev libegl-dev libgles-dev \
         nasm \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 COPY . .
-RUN meson setup build --buildtype=release \
+RUN meson setup build --buildtype=release -Dsettings_app=enabled \
     && ninja -C build \
-    && install -Dm755 build/wup-thinserver /out/wup-thinserver
+    && DESTDIR=/out meson install -C build
 
 # ---------------------------------------------------------------------------
 # Stage 2: runtime — desktop session + daemon
@@ -45,7 +46,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     KEYBOARD_LAYOUT=us \
     KEYBOARD_VARIANT= \
     LOCALE=C.UTF-8 \
-    WUP_THIN_CONFIG=/etc/wup-thinserver/settings.json \
+    WUP_THIN_CONFIG=/home/wup/.config/wup-thinserver/settings.json \
     PULSE_RUNTIME_PATH=/tmp/pulse-runtime \
     XDG_RUNTIME_DIR=/tmp/xdg-runtime
 
@@ -55,6 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libglib2.0-0 libx11-6 libxrandr2 libxtst6 libxext6 libxinerama1 \
         libxcb1 libxcb-shm0 libx11-xcb1 \
         libpulse0 libcairo2 libpangocairo-1.0-0 libjson-glib-1.0-0 \
+        libgtk-3-0 \
         libswscale8 libdrm2 libgbm1 libegl1 libgles2 \
         libpulse0 \
     && rm -rf /var/lib/apt/lists/*
@@ -69,7 +71,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         firefox-esr \
         onboard \
         at-spi2-core gsettings-desktop-schemas gir1.2-atspi-2.0 \
-        xdg-utils \
+        xdg-utils xdg-user-dirs \
         x11-xkb-utils xkb-data \
         locales keyboard-configuration \
         fonts-dejavu fonts-liberation fonts-noto-core \
@@ -85,16 +87,16 @@ RUN useradd -m -u 1000 -s /bin/bash wup \
     && mkdir -p /home/wup/.config/wup-thinserver \
     && chown -R wup:wup /home/wup
 
-# Daemon binary + helpers + default config.
-COPY --from=builder /out/wup-thinserver /usr/local/bin/wup-thinserver
-COPY config/settings.example.json /etc/wup-thinserver/settings.json
+# Daemon, settings application, desktop metadata and shared data.
+COPY --from=builder /out/usr/local/ /usr/local/
 COPY scripts/onboard-toggle.sh /usr/local/bin/onboard-toggle
 COPY scripts/onboard-setup.sh /usr/local/bin/onboard-setup
+COPY scripts/install-desktop-shortcut.sh /usr/local/bin/wup-install-desktop-shortcut
 COPY scripts/migrate-settings.py /usr/local/bin/wup-migrate-settings
 COPY scripts/wup-set-password.sh /usr/local/bin/wup-set-password
 RUN chmod 755 /usr/local/bin/onboard-toggle /usr/local/bin/onboard-setup \
-        /usr/local/bin/wup-migrate-settings /usr/local/bin/wup-set-password \
-    && chown -R wup:wup /etc/wup-thinserver
+        /usr/local/bin/wup-install-desktop-shortcut \
+        /usr/local/bin/wup-migrate-settings /usr/local/bin/wup-set-password
 
 # Entrypoint: starts as root for account provisioning, then drops to the
 # unprivileged `wup` user via setpriv for the whole desktop session.

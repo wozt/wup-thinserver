@@ -1,6 +1,6 @@
 # Project status
 
-Updated: 2026-11-27 (desktop-usability milestone)
+Updated: 2026-11-26 (live settings milestone)
 
 Status legend: **planned** / **in progress** / **implemented** /
 **tested automatically** / **validated on physical hardware** / **known issue**
@@ -49,6 +49,48 @@ Status legend: **planned** / **in progress** / **implemented** /
 
 planned (desktop interaction polish, session reliability hardening,
 performance measurement, native install, Raspberry Pi).
+
+## Live configuration interface
+
+- [x] **Implemented / automatically tested:** same-user Unix socket with
+      `0700` directory, `0600` socket, UID peer check, 64 KiB message bound,
+      and no TCP listener.
+- [x] **Implemented / automatically tested:** get, validate, apply, restore,
+      daemon state, and current controller-state operations.
+- [x] **Implemented / automatically tested:** invalid keys and new arbitrary
+      commands are rejected without changing the valid file.
+- [x] **Implemented / automatically tested:** atomic save precedes publication
+      of a complete configuration snapshot to the streaming thread.
+- [x] **Implemented:** old-map key chords, modifiers, stick keys, mouse
+      buttons and touch drags are released before live replacement.
+
+## Integrated WUP ThinServer Settings
+
+- [x] **Implemented:** optional GTK3 executable; daemon-only builds use
+      `-Dsettings_app=disabled` and do not require GTK.
+- [x] **Implemented:** complete button/action editor, key capture and common
+      keyboard-free actions, independent stick modes/directions, touch, gyro,
+      microphone/volume options, live input diagnostics, reload and defaults.
+- [x] **Implemented:** compact borderless WOZT-style layout, custom title bar,
+      eight resize zones, framed sections, taskbar identity, icon/menu entry,
+      and idempotent localized-XDG desktop shortcut installation.
+- [x] **Automatically tested:** native build and IPC integration; Xvfb render
+      at 854x480 has no GTK warnings and exposes `_NET_WM_ICON` and WM_CLASS.
+- [x] **Automatically tested in Docker:** rebuilt image is healthy; existing
+      persistent HOME received the executable/trusted launcher; app launched
+      in the real XFCE session; live apply and restore preserved the active
+      `streaming` connection.
+- [ ] **Planned:** named profiles/import-export, detailed gesture thresholds,
+      Onboard preferences, response curves, seven live JSON themes/languages,
+      and a graphical controller silhouette.
+
+## PC client, ARM64 and appliances
+
+- [ ] **Planned:** WUP ThinClient PC feasibility, automated laboratory,
+      native installer, QEMU ARM64, Raspberry Pi 4 and Zero 2 W images.
+- **Known limitation:** GamePad raw-CABAC reconstruction for FFmpeg has not
+  yet been demonstrated. QEMU results will not be treated as physical Pi
+  performance or VideoCore compatibility evidence.
 
 ## Milestone 2b — Desktop usability (this milestone)
 

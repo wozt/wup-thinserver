@@ -92,6 +92,9 @@ persistent home volume — no `down -v` needed for software updates:
   keeps a `.pre-desktop-migration.bak` backup.
 - `onboard-setup` applies the docked/auto-show Onboard defaults once
   (marker file); `ONBOARD_*` env vars override on every start.
+- `wup-install-desktop-shortcut` adds WUP ThinServer Settings to the localized
+  XDG desktop when absent, marks it executable/trusted, and never overwrites a
+  customized launcher.
 - Documents, Firefox profiles, downloads and unrelated XFCE settings are
   never touched.
 

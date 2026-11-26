@@ -132,6 +132,13 @@ xfconf-query -c xfce4-desktop -p /desktop-icons/style 2>/dev/null && \
     xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 1 || true
 xfconf-query -c xfwm4 -p /general/button_layout -s "O|SHMC" 2>/dev/null || true
 
+# Install the settings launcher for new and existing persistent home volumes.
+# The helper resolves the localized XDG desktop directory and never replaces
+# a launcher the user already customized.
+if [ -x /usr/local/bin/wup-install-desktop-shortcut ]; then
+    /usr/local/bin/wup-install-desktop-shortcut || log "desktop shortcut installation reported issues"
+fi
+
 # --- 4. Onboard (on-screen keyboard) ----------------------------------------
 # Apply the desktop keyboard defaults once per home volume (marker file),
 # honouring ONBOARD_* env overrides every start.
@@ -151,7 +158,7 @@ log "Onboard started (auto-show + X toggle)"
 # --- 5. wup-thinserver -------------------------------------------------------
 if [ ! -f "$WUP_THIN_CONFIG" ]; then
     mkdir -p "$(dirname "$WUP_THIN_CONFIG")"
-    cp /etc/wup-thinserver/settings.json "$WUP_THIN_CONFIG" 2>/dev/null || true
+    cp /usr/local/share/wup-thinserver/settings.example.json "$WUP_THIN_CONFIG"
 fi
 wup-thinserver --config "$WUP_THIN_CONFIG" &
 DAEMON_PID=$!

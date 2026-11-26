@@ -77,6 +77,10 @@ install_data('config/settings.example.json',
   install_dir: get_option('datadir') / 'wup-thinserver')
 install_data('scripts/onboard-toggle.sh',
   install_dir: get_option('datadir') / 'wup-thinserver')
+install_data('scripts/install-desktop-shortcut.sh',
+  install_dir: get_option('bindir'),
+  rename: 'wup-install-desktop-shortcut',
+  install_mode: 'rwxr-xr-x')
 
 # --- tests ------------------------------------------------------------------
 cap_test = executable('wup-capture-test',

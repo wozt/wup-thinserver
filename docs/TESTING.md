@@ -17,6 +17,17 @@ meson test -C build                     # unit tests (see tests/)
   round-trip through `settings_save`/`settings_load`.
 - `tests/test_geometry.py` — touch→desktop coordinate transform and
   aspect geometry (letterbox/crop/stretch math extracted for the test).
+- `tests/test_control.py` — isolated Xvfb daemon, socket permissions, live
+  get/apply/restore, atomic persistence, and rejection of invalid keys and
+  arbitrary IPC commands.
+
+For a visual smoke test inside the container:
+
+```sh
+docker compose exec --user wup wup-thinserver-settings
+docker compose exec --user wup sh -lc \
+  'test -x "$(xdg-user-dir DESKTOP)/wup-thinserver-settings.desktop"'
+```
 
 ### Not yet covered (planned)
 
