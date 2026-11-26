@@ -73,7 +73,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         x11-xkb-utils xkb-data \
         locales keyboard-configuration \
         fonts-dejavu fonts-liberation fonts-noto-core \
-        python3 python3-gi gir1.2-gtk-3.0 \
+        python3 python3-gi gir1.2-gtk-3.0 libglib2.0-bin \
         polkitd pkexec \
         sudo \
     && rm -rf /var/lib/apt/lists/*\
@@ -89,12 +89,15 @@ RUN useradd -m -u 1000 -s /bin/bash wup \
 COPY --from=builder /out/wup-thinserver /usr/local/bin/wup-thinserver
 COPY config/settings.example.json /etc/wup-thinserver/settings.json
 COPY scripts/onboard-toggle.sh /usr/local/bin/onboard-toggle
-RUN chmod 755 /usr/local/bin/onboard-toggle \
+COPY scripts/onboard-setup.sh /usr/local/bin/onboard-setup
+COPY scripts/migrate-settings.py /usr/local/bin/wup-migrate-settings
+COPY scripts/wup-set-password.sh /usr/local/bin/wup-set-password
+RUN chmod 755 /usr/local/bin/onboard-toggle /usr/local/bin/onboard-setup \
+        /usr/local/bin/wup-migrate-settings /usr/local/bin/wup-set-password \
     && chown -R wup:wup /etc/wup-thinserver
 
-# Session entrypoint (root -> drops to wup via gosu-less setpriv? we run the
-# whole container as wup; see compose `user:`). We keep files root-owned where
-# they must stay read-only.
+# Entrypoint: starts as root for account provisioning, then drops to the
+# unprivileged `wup` user via setpriv for the whole desktop session.
 COPY docker/entrypoint.sh /usr/local/bin/wup-thin-entrypoint
 RUN chmod 755 /usr/local/bin/wup-thin-entrypoint
 
@@ -103,11 +106,10 @@ RUN mkdir -p /tmp/pulse-runtime /tmp/xdg-runtime \
     && chmod 700 /tmp/pulse-runtime /tmp/xdg-runtime \
     && chown wup:wup /tmp/pulse-runtime /tmp/xdg-runtime
 
-USER wup
 WORKDIR /home/wup
 
-# Healthcheck: X display answers AND the daemon is alive.
+# Healthcheck: X display answers AND the daemon is alive (as user wup).
 HEALTHCHECK --interval=15s --timeout=5s --start-period=45s --retries=5 \
-    CMD bash -c 'DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && pgrep -x wup-thinserver >/dev/null'
+    CMD runuser -u wup -- bash -c 'DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && pgrep -x wup-thinserver >/dev/null'
 
 ENTRYPOINT ["/usr/local/bin/wup-thin-entrypoint"]

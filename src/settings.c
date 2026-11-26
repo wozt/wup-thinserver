@@ -25,15 +25,18 @@ const char *settings_path(void) {
 
 /* default kbmouse mapping: A B X Y -> z x c v, dpad -> arrows,
    L R -> shift ctrl, ZL ZR -> a s, +/- -> -, =, home->Escape, sticks->mouse, L3/R3 -> e q */
+/* WUP_THIN_DESKTOP: GamePad -> XFCE desktop defaults (see
+   config/settings.example.json and docs/CONFIGURATION.md). X is left
+   unmapped here because input.commands[X] runs onboard-toggle instead;
+   ZL/ZR/L3/R3 are mouse buttons via input.mouse_buttons. */
 static const char *defkeys[18] = {
-    "z", "x", "c", "v",                       /* A B X Y */
-    "Left", "Right", "Up", "Down",            /* dpad */
-    "a", "s",                                 /* ZL ZR */
-    "Shift_L", "Control_L",                   /* L R */
-    "minus", "equal",                         /* +/- */
-    "Escape",                                 /* HOME */
-    "e", "q",                                 /* L3 R3 */
-    "F1",                                     /* TV */
+    "Return", "Escape", "", "Alt+Tab",       /* A B X Y */
+    "Left", "Right", "Up", "Down",           /* dpad */
+    "", "",                                   /* ZL ZR (mouse buttons) */
+    "Ctrl+Page_Up", "Ctrl+Page_Down",         /* L R: browser tabs */
+    "Ctrl+plus", "Ctrl+minus",                /* +/-: zoom */
+    "", "", "",                               /* HOME (client menu) L3 R3 */
+    "F11",                                    /* TV: fullscreen */
 };
 
 void settings_defaults(settings_t *s) {
@@ -62,7 +65,12 @@ void settings_defaults(settings_t *s) {
     s->input.gyro_mode = GYRO_OFF;
     s->input.gyro_sens = 100;
     s->input.touch_as_mouse = 1;
-    s->input.right_stick_mouse = 1;
+    /* WUP_THIN_DESKTOP: desktop-oriented sticks — left = pointer,
+       right = scroll; no stick->key defaults (stick_keys stays
+       configurable but empty by default). */
+    s->input.left_stick_mouse = 1;
+    s->input.right_stick_mouse = 0;
+    s->input.right_stick_scroll = 1;
     /* WUP_THINSERVER: daemon defaults — stream on client connect, wait for
        reconnection after a drop instead of stopping the session. */
     s->autostart_stream = 1;
@@ -74,11 +82,13 @@ void settings_defaults(settings_t *s) {
        PATH by the container image and the native installer. */
     snprintf(s->input.commands[WBTN_X], sizeof s->input.commands[WBTN_X],
              "onboard-toggle");
-    {
-        static const char *dsk[8] = {"a","d","w","s","Left","Right","Up","Down"};
-        for (int i = 0; i < 8; i++)
-            snprintf(s->input.stick_keys[i], sizeof s->input.stick_keys[i], "%s", dsk[i]);
-    }
+    /* WUP_THIN_DESKTOP: ZL/L3 = left click, ZR/R3 = right click. */
+    s->input.mouse_buttons[WBTN_ZL] = 1;
+    s->input.mouse_buttons[WBTN_ZR] = 3;
+    s->input.mouse_buttons[WBTN_L3] = 1;
+    s->input.mouse_buttons[WBTN_R3] = 3;
+    /* WUP_THIN_DESKTOP: sticks drive pointer/scroll, not keys — the
+       upstream WASD/arrows defaults conflicted with mouse control. */
     s->npresets = 3;
     struct { const char *n; int crf, kbps, gop; } dp[] = {
         {"Economy", 23, 4000, 0},
@@ -181,7 +191,9 @@ settings_t *settings_load(void) {
                     s->input.gyro_bias[i] = json_array_get_double_element(gb, i);
         }
         s->input.touch_as_mouse = json_int(in, "touch_as_mouse", s->input.touch_as_mouse);
+        s->input.left_stick_mouse = json_int(in, "left_stick_mouse", s->input.left_stick_mouse);
         s->input.right_stick_mouse = json_int(in, "right_stick_mouse", s->input.right_stick_mouse);
+        s->input.right_stick_scroll = json_int(in, "right_stick_scroll", s->input.right_stick_scroll);
         JsonArray *keys = json_arr(in, "keys");
         if (keys) {
             for (guint i = 0; i < 18 && i < json_array_get_length(keys); i++) {
@@ -301,7 +313,9 @@ void settings_save(settings_t *s) {
         json_array_add_double_element(gb, s->input.gyro_bias[i]);
     json_object_set_array_member(in, "gyro_bias", gb);
     json_object_set_int_member(in, "touch_as_mouse", s->input.touch_as_mouse);
+    json_object_set_int_member(in, "left_stick_mouse", s->input.left_stick_mouse);
     json_object_set_int_member(in, "right_stick_mouse", s->input.right_stick_mouse);
+    json_object_set_int_member(in, "right_stick_scroll", s->input.right_stick_scroll);
     JsonArray *keys = json_array_new();
     for (int i = 0; i < 18; i++)
         json_array_add_string_element(keys, s->input.keys[i]);

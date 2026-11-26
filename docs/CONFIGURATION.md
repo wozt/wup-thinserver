@@ -44,9 +44,11 @@ An annotated example ships at `config/settings.example.json` (installed to
 | `invert_y` | Invert stick Y |
 | `gyro_mode` / `gyro_sens` / `gyro_bias` | Gyro→mouse/stick, sensitivity, calibrated bias |
 | `touch_as_mouse` | Touchscreen → pointer gestures (tap/drag/scroll/right-click) |
-| `right_stick_mouse` | Right stick → relative pointer motion |
+| `left_stick_mouse` | Left stick → relative pointer motion (desktop default `1`) |
+| `right_stick_mouse` | Right stick → relative pointer motion (legacy; `0` by default) |
+| `right_stick_scroll` | Right stick → wheel scroll, horizontal + vertical (desktop default `1`) |
 | `keys[18]` | X11 keysym chords per button, order: `A B X Y ← → ↑ ↓ ZL ZR L R + − HOME L3 R3 TV`. Chords like `"Ctrl+Page_Up"` supported. |
-| `stick_keys[8]` | Keys for stick directions: `LX- LX+ LY- LY+ RX- RX+ RY- RY+` |
+| `stick_keys[8]` | Keys for stick directions: `LX- LX+ LY- LY+ RX- RX+ RY- RY+` (empty by default — sticks drive pointer/scroll instead) |
 | `commands[18]` | Shell command run on each **press** edge (kb/mouse mode). E.g. `["", "", "onboard-toggle", ...]` toggles Onboard on X. |
 | `mouse_buttons[18]` | X11 button (1=left, 2=middle, 3=right, 4/5=wheel) on press/release edges. Takes precedence over `keys`. |
 | `cmd_presets` / `cmd_preset` | Named keymaps saved for reuse |
@@ -55,19 +57,27 @@ An annotated example ships at `config/settings.example.json` (installed to
 
 | GamePad | Action |
 |---|---|
-| Touch | pointer position + gestures (click/drag/scroll/right-click) |
-| Left stick | relative pointer (also arrow keys via `stick_keys`) |
-| Right stick | scroll/pointer |
-| ZL / ZR | left / right mouse button |
+| Touch | absolute pointer + gestures (tap / double-tap / long-press right-click / drag / scroll) |
+| Left stick | relative pointer motion (`left_stick_mouse`) |
+| Right stick | wheel scroll, horizontal + vertical (`right_stick_scroll`) |
+| ZL / L3 | left mouse button (`mouse_buttons`) |
+| ZR / R3 | right mouse button (`mouse_buttons`) |
 | A / B | Enter / Escape |
-| X | toggle Onboard (`onboard-toggle` command) |
+| X | toggle Onboard (`commands[WBTN_X]` = `onboard-toggle`) |
 | Y | Alt+Tab |
-| L / R | previous / next browser tab (Ctrl+Page_Up/Down) |
+| L / R | previous / next workspace (Ctrl+Page_Up / Ctrl+Page_Down) |
 | D-pad | arrow keys |
-| + / − | browser zoom (Ctrl+plus/minus) |
+| + / − | zoom (Ctrl+plus / Ctrl+minus) |
 | TV | fullscreen (F11) |
-| HOME | reserved for the client-side menu (not forwarded) |
+| HOME | local ThinClient menu — never forwarded to the desktop |
 | Volume slider | PulseAudio volume |
+
+`commands[]` owns a button entirely: a press edge runs the shell command and
+no key or mouse action is produced for that button (so a command-bound button
+cannot also emit a stray keysym). `mouse_buttons[]` maps a button to an X11
+mouse button (1 left, 2 middle, 3 right, 4/5 wheel) on press/release edges
+and takes precedence over `keys[]` when both are set. Held mouse buttons are
+released on client disconnect.
 
 All of it is configuration — nothing is hard-coded.
 

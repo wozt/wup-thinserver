@@ -3,48 +3,59 @@
 #
 # Invoked by wup-thinserver when the GamePad's X button is pressed
 # (input.commands[WBTN_X] in settings.json). Runs inside the session's
-# D-Bus/X11 environment, so DISPLAY and DBUS_SESSION_BUS_ADDRESS must be
-# set by the caller (the daemon inherits them from the session launcher).
+# D-Bus/X11 environment (DISPLAY and DBUS_SESSION_BUS_ADDRESS are
+# inherited from the session launcher).
 #
-# Onboard exposes org.onboard.Onboard on the session bus. When the method
-# calls are unavailable we fall back to launching/hiding via wmctrl-free
-# heuristics: a running onboard is hidden through its D-Bus Hide method;
-# otherwise a fresh `onboard` is started.
+# Onboard 1.4.x (Debian 13) exposes:
+#   service  org.onboard.Onboard
+#   path     /org/onboard/Onboard/Keyboard
+#   iface    org.onboard.Onboard.Keyboard
+#   methods  Show() Hide() ToggleVisible()
+#   props    Visible (ro, bool), AutoShowPaused (rw, bool)
+#
+# Toggle = read Visible, then Show or Hide (explicit, no guessing).
+# Fallbacks: ToggleVisible(), then Show() when nothing is running.
 
 set -eu
 
-call() {
-    # call METHOD; returns 0 when the bus call succeeded
-    if command -v gdbus >/dev/null 2>&1; then
-        gdbus call --session --dest org.onboard.Onboard \
-            --object-path /Onboard \
-            --method "org.onboard.Onboard.$1" >/dev/null 2>&1
-    elif command -v dbus-send >/dev/null 2>&1; then
-        dbus-send --session --print-reply \
-            --dest=org.onboard.Onboard /Onboard \
-            "org.onboard.Onboard.$1" >/dev/null 2>&1
-    else
-        return 1
-    fi
+BUS_DEST="org.onboard.Onboard"
+BUS_PATH="/org/onboard/Onboard/Keyboard"
+BUS_IFACE="org.onboard.Onboard.Keyboard"
+
+visible() {
+    # prints "true"/"false"; rc 1 when the property cannot be read
+    gdbus call --session --dest "$BUS_DEST" --object-path "$BUS_PATH" \
+        --method org.freedesktop.DBus.Properties.Get \
+        "$BUS_IFACE" Visible 2>/dev/null | grep -o 'true\|false' | head -1
 }
 
-running() {
-    pgrep -x onboard >/dev/null 2>&1
+method() {
+    gdbus call --session --dest "$BUS_DEST" --object-path "$BUS_PATH" \
+        --method "$BUS_IFACE.$1" >/dev/null 2>&1
 }
+
+running() { pgrep -x onboard >/dev/null 2>&1; }
+
+if ! command -v gdbus >/dev/null 2>&1; then
+    # Last resort without gdbus: dbus-send for ToggleVisible.
+    if running; then
+        dbus-send --session --print-reply --dest="$BUS_DEST" "$BUS_PATH" \
+            "$BUS_IFACE.ToggleVisible" >/dev/null 2>&1 || true
+    else
+        exec onboard >/dev/null 2>&1 &
+    fi
+    exit 0
+fi
 
 if running; then
-    if call Hide; then
-        exit 0
-    fi
-    # D-Bus method missing: fall back to SIGTERM (onboard saves its state).
-    pkill -x onboard 2>/dev/null || true
+    v="$(visible || true)"
+    case "$v" in
+        true)  method Hide ;;
+        false) method Show ;;
+        *)      method ToggleVisible || method Show ;;
+    esac
     exit 0
 fi
 
-# Not running: try the D-Bus Show first (covers "hidden but alive" states),
-# then start the keyboard docked at the bottom of the screen.
-if call Show; then
-    exit 0
-fi
-exec onboard --layout "Compact" >/dev/null 2>&1 &
-exit 0
+# Not running: start it, then make sure it is actually visible.
+exec onboard >/dev/null 2>&1 &

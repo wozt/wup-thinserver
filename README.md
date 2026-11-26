@@ -50,11 +50,17 @@ docker compose down              # stop (home data persists in volume wup-home)
 docker compose up -d             # start again
 ```
 
-Environment overrides (see docs/CONFIGURATION.md): `DESKTOP_WIDTH`,
+Environment overrides (see `.env.example` and docs/CONFIGURATION.md):
+`THIN_HOSTNAME` (default `wup-thinserver`), `DESKTOP_WIDTH`,
 `DESKTOP_HEIGHT`, `KEYBOARD_LAYOUT`, `KEYBOARD_VARIANT`, `LOCALE`,
-`DISPLAY_NUM`. Persistent data: `docker volume inspect
-wup-thinserver_wup-home` (backup = copy the volume; reset =
-`docker compose down -v`).
+`DISPLAY_NUM`, `WUP_PASSWORD`/`WUP_PASSWORD_HASH`, `WUP_SUDO`,
+`WUP_SUDO_NOPASSWD`, `ONBOARD_DOCK_HEIGHT`, `ONBOARD_LAYOUT`.
+Persistent data: `docker volume inspect wup-thinserver_wup-home`
+(backup = copy the volume; reset = `docker compose down -v`).
+
+Inside the session: user `wup`, hostname `wup-thinserver`, XFCE desktop,
+Onboard on-screen keyboard (auto-shows on text fields, GamePad **X** toggles
+it), Firefox ESR, Thunar, Mousepad, xfce4-terminal.
 
 ### Native build (Debian 13 / compatible)
 
@@ -75,9 +81,30 @@ no WUP Stream checkout required.
 
 ### Connect
 
-Start **WUP ThinClient** on the GamePad (same LAN), set the server IP
-(**Y** in its menu) or leave "any server", and the desktop appears.
-Input mapping defaults are in `config/settings.example.json`.
+Start **WUP ThinClient** on the GamePad (same LAN). It opens a connection
+menu — nothing streams until you press **Connect** (or enable
+auto-connect). Edit the server IP there (**Edit server address**), or leave
+"any server" to take the first ThinServer that answers. While streaming,
+**HOME** opens the local menu (resume / disconnect / reconnect / controls /
+exit); **HOME+B** held for 2 s quits the app.
+
+Controller defaults (all configurable — see
+`config/settings.example.json` and docs/CONFIGURATION.md):
+
+| GamePad | Action |
+|---|---|
+| Touch | absolute pointer + tap / drag / scroll / long-press right-click |
+| Left stick | mouse move |
+| Right stick | scroll |
+| ZL / L3 | left mouse button |
+| ZR / R3 | right mouse button |
+| A / B | Enter / Escape |
+| X | toggle Onboard keyboard |
+| Y | Alt+Tab |
+| L / R | previous / next workspace |
+| D-pad | arrow keys |
+| + / − | zoom |
+| TV | fullscreen |
 
 See [docs/INSTALLATION.md](docs/INSTALLATION.md),
 [docs/BUILD.md](docs/BUILD.md), [docs/CONFIGURATION.md](docs/CONFIGURATION.md).

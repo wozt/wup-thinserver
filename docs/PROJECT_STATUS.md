@@ -1,6 +1,6 @@
 # Project status
 
-Updated: 2026-11-26 (first development session)
+Updated: 2026-11-27 (desktop-usability milestone)
 
 Status legend: **planned** / **in progress** / **implemented** /
 **tested automatically** / **validated on physical hardware** / **known issue**
@@ -22,7 +22,11 @@ Status legend: **planned** / **in progress** / **implemented** /
       xfwm4/xfce4-panel/xfdesktop/Thunar/Onboard/wup-thinserver all running
       on Xvfb :99; daemon in "looking for GamePad" state. Firefox ESR is
       installed and launchable (not yet opened in-session).
-- [ ] GamePad-visible check: connect WUP ThinClient and confirm the desktop renders.
+- [x] **Physical GamePad validation (developer-reported):** the XFCE desktop
+      is visible and usable from WUP ThinClient on real hardware. This is the
+      first end-to-end confirmation of the streaming pipeline.
+- [ ] Onboard auto-appearance in text fields (implemented + D-Bus verified
+      in container; pending physical retest).
 
 ## Milestone 2 — Headless streaming server
 
@@ -46,10 +50,35 @@ Status legend: **planned** / **in progress** / **implemented** /
 planned (desktop interaction polish, session reliability hardening,
 performance measurement, native install, Raspberry Pi).
 
+## Milestone 2b — Desktop usability (this milestone)
+
+- [x] Desktop-oriented default bindings: left stick = pointer, right stick =
+      scroll, ZL/ZR/L3/R3 = mouse buttons, X = `onboard-toggle` command,
+      HOME reserved for the client menu. `stick_keys` empty by default.
+- [x] Input reliability: command-bound buttons produce no key/mouse state,
+      mouse buttons tracked in `mb_down` and released on disconnect,
+      chords released only when actually pressed (`chord_down`),
+      fractional scroll accumulation, zombie-free command spawning
+      (no `G_SPAWN_DO_NOT_REAP_CHILD`), touch coordinates clamped.
+- [x] Onboard: auto-show enabled + bottom docking via `onboard-setup`
+      (gsettings, once per home volume); visibility-aware toggle via the
+      real D-Bus API (`org.onboard.Onboard.Keyboard` `Visible`/`Show`/`Hide`)
+      — verified in-container: repeated toggles alternate Visible
+      true/false with a single Onboard process.
+- [x] Hostname `wup-thinserver` (compose `hostname`, `THIN_HOSTNAME` override).
+- [x] `wup` account provisioning: locked password by default,
+      `WUP_PASSWORD`/`WUP_PASSWORD_HASH`/`wup-set-password`, optional
+      `WUP_SUDO`/`WUP_SUDO_NOPASSWD`; entrypoint drops root→wup via setpriv.
+- [x] Idempotent config migration (`wup-migrate-settings`) preserving the
+      persistent home volume — verified: existing settings.json migrated
+      with `.pre-desktop-migration.bak` backup, no volume reset.
+- [ ] Physical retest: Onboard auto-show on text fields, X toggling,
+      new stick/mouse bindings, manual connect flow.
+
 ## Known issues / risks
 
-- Nothing validated on physical GamePad hardware yet.
+- Core streaming validated on physical GamePad (developer-reported);
+  usability fixes above pending physical retest.
 - Host-networking requirement for pad discovery (documented).
 - 60 fps not measured; software x264 at 720p may not sustain it.
-- `commands[]`/`mouse_buttons[]` are local additions (not upstream).
-- Onboard D-Bus toggle (`onboard-toggle`) untested against real Onboard.
+- `commands[]`/`mouse_buttons[]`/`cmd_presets` are local additions (not upstream).

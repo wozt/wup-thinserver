@@ -53,6 +53,9 @@ struct input_ctx {
     double vol_last;             /* last time we spawned pactl */
     /* mouse accumulators */
     double mx, my;               /* pending relative motion */
+    double sx, sy;               /* pending scroll clicks (fractional) */
+    int mb_down;                 /* X11 mouse buttons currently held (bit n-1 = button n) */
+    uint32_t chord_down;         /* pad buttons whose keysym chord is currently held */
     double grx, gry;             /* gyro-integrated right stick */
     int scr_w, scr_h;
     /* gyro calibration */
@@ -240,14 +243,16 @@ static void chord_press(input_ctx_t *ctx, const chord_t *c, int down) {
 }
 
 /* WUP_THIN_CMDS: run a configured shell command on a button press edge.
-   Detached: the stream thread never waits on the command. */
+   Detached: the stream thread never waits on the command. Children are
+   reaped automatically by GSpawn (no DO_NOT_REAP_CHILD: that flag left a
+   zombie per toggle). */
 static void run_button_command(const char *cmd) {
     if (!cmd || !cmd[0]) return;
     gchar *argv[] = {"/bin/sh", "-c", (gchar *)cmd, NULL};
     GError *error = NULL;
     if (!g_spawn_async(NULL, argv, NULL,
             G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL |
-            G_SPAWN_STDERR_TO_DEV_NULL | G_SPAWN_DO_NOT_REAP_CHILD,
+            G_SPAWN_STDERR_TO_DEV_NULL,
             NULL, NULL, NULL, &error)) {
         g_warning("button command failed to launch: %s", error->message);
         g_clear_error(&error);
@@ -258,21 +263,37 @@ static void kb_buttons(input_ctx_t *ctx, const settings_t *s, uint32_t buttons) 
     uint32_t changed = buttons ^ ctx->prev_buttons;
     for (int i = 0; i < WBTN_COUNT; i++) {
         if (!(changed & wbtn_bit[i])) continue;
-        /* WUP_THIN_CMDS: press edge only; a configured command replaces the
-           keysym chord for that button (both may be set: command wins). */
-        if ((buttons & wbtn_bit[i]) && s->input.commands[i][0]) {
-            run_button_command(s->input.commands[i]);
+        int down = (buttons & wbtn_bit[i]) != 0;
+        /* WUP_THIN_CMDS: a configured command owns the button entirely —
+           it fires on the press edge and produces no key/mouse state, so
+           the release edge must not fall through to a keysym or mouse
+           release that was never pressed. */
+        if (s->input.commands[i][0]) {
+            if (down) run_button_command(s->input.commands[i]);
             continue;
         }
-        /* WUP_THIN_CMDS: configured X11 mouse button beats the keysym chord */
+        /* WUP_THIN_CMDS: configured X11 mouse button beats the keysym chord.
+           Held state is tracked in mb_down so disconnect can release it. */
         int mb = s->input.mouse_buttons[i];
         if (mb >= 1 && mb <= 5) {
-            xtest_button(ctx->dpy, mb, (buttons & wbtn_bit[i]) != 0);
+            xtest_button(ctx->dpy, mb, down);
+            if (down) {
+                ctx->mb_down |= 1 << (mb - 1);
+            } else {
+                /* another held pad button may share this X button */
+                int still = 0;
+                for (int j = 0; j < WBTN_COUNT; j++)
+                    if (j != i && (buttons & wbtn_bit[j]) &&
+                        s->input.mouse_buttons[j] == mb) { still = 1; break; }
+                if (!still) ctx->mb_down &= ~(1 << (mb - 1));
+            }
             continue;
         }
         const chord_t *c = &btn_chord[i];
         if (c->key == NoSymbol) continue;
-        chord_press(ctx, c, (buttons & wbtn_bit[i]) != 0);
+        chord_press(ctx, c, down);
+        if (down) ctx->chord_down |= wbtn_bit[i];
+        else ctx->chord_down &= ~wbtn_bit[i];
     }
 }
 
@@ -338,8 +359,10 @@ static void kb_pointer(input_ctx_t *ctx, const settings_t *s, const wupstream_in
     if (ctx->map_valid && ctx->map_w > 0 && ctx->map_h > 0) {
         mx0 = ctx->map_x; my0 = ctx->map_y; mw = ctx->map_w; mh = ctx->map_h;
     }
-#define TOUCH_PX(tx_) (mx0 + (int)((tx_) * (double)mw / 853.0))
-#define TOUCH_PY(ty_) (my0 + (int)((ty_) * (double)mh / 479.0))
+#define TOUCH_PX(tx_) ({ int _v = mx0 + (int)((tx_) * (double)mw / 853.0); \
+    _v < mx0 ? mx0 : (_v >= mx0 + mw ? mx0 + mw - 1 : _v); })
+#define TOUCH_PY(ty_) ({ int _v = my0 + (int)((ty_) * (double)mh / 479.0); \
+    _v < my0 ? my0 : (_v >= my0 + mh ? my0 + mh - 1 : _v); })
 
     /* touch -> mouse gestures (capacitive-touch spec values):
        - tap (<500 ms, <12 px wander)      : left click on release
@@ -426,15 +449,37 @@ static void kb_pointer(input_ctx_t *ctx, const settings_t *s, const wupstream_in
         }
     }
 
-    /* right stick -> relative mouse (kb/mouse mode only) */
+    /* WUP_THIN_DESKTOP sticks (kb/mouse mode):
+       - left stick  -> relative pointer motion
+       - right stick -> wheel scroll (vertical + horizontal), or relative
+         pointer when right_stick_mouse is set instead of right_stick_scroll.
+       A stick never emits keys here; stick_keys[] is a separate opt-in. */
     double sens = ic->sensitivity / 100.0;
-    if (ic->mode == INMODE_KBMOUSE && ic->right_stick_mouse) {
+    if (ic->mode == INMODE_KBMOUSE) {
+        int lx = in->lx, ly = in->ly;
+        if (abs(lx) < dz) lx = 0;
+        if (abs(ly) < dz) ly = 0;
+        if (ic->invert_y) ly = -ly;
+        if (ic->left_stick_mouse) {
+            ctx->mx += lx * 0.9 * sens;
+            ctx->my += ly * 0.9 * sens;
+        }
         int rx = in->rx, ry = in->ry;
         if (abs(rx) < dz) rx = 0;
         if (abs(ry) < dz) ry = 0;
         if (ic->invert_y) ry = -ry;
-        ctx->mx += rx * 0.9 * sens;
-        ctx->my += ry * 0.9 * sens;
+        if (ic->right_stick_scroll) {
+            /* accumulate fractional motion; one wheel click per ~28 units */
+            ctx->sx += rx * 0.9 * sens;
+            ctx->sy += ry * 0.9 * sens;
+            while (ctx->sy > 28) { xtest_scroll(d, 4); ctx->sy -= 28; }
+            while (ctx->sy < -28) { xtest_scroll(d, 5); ctx->sy += 28; }
+            while (ctx->sx > 28) { xtest_scroll(d, 7); ctx->sx -= 28; }
+            while (ctx->sx < -28) { xtest_scroll(d, 6); ctx->sx += 28; }
+        } else if (ic->right_stick_mouse) {
+            ctx->mx += rx * 0.9 * sens;
+            ctx->my += ry * 0.9 * sens;
+        }
     }
     /* gyro -> mouse (both modes): px/frame = dps * px_per_s / 60 */
     if (ic->gyro_mode == GYRO_MOUSE ||
@@ -500,17 +545,27 @@ static void input_release_held(input_ctx_t *ctx) {
         /* Give consumers a chance to process the neutral report. */
         g_usleep(10000);
     } else if (ctx->dpy) {
-        /* Keyboard mapping: undo pressed chords, including stick directions. */
+        /* Keyboard mapping: undo only chords that were actually pressed —
+           buttons bound to commands[]/mouse_buttons[] never pressed a
+           chord, so prev_buttons alone would release keys never held. */
         for (int i = 0; i < WBTN_COUNT; i++) {
-            if ((ctx->prev_buttons & wbtn_bit[i]) &&
+            if ((ctx->chord_down & wbtn_bit[i]) &&
                 btn_chord[i].key != NoSymbol)
                 chord_press(ctx, &btn_chord[i], 0);
         }
+        ctx->chord_down = 0;
         for (int i = 0; i < 8; i++) {
             if ((ctx->prev_stick_dirs & (1u << i)) &&
                 stick_chord[i].key != NoSymbol)
                 chord_press(ctx, &stick_chord[i], 0);
         }
+        /* WUP_THIN_CMDS: mouse buttons held via mouse_buttons[] are not
+           chords — release whatever mb_down still has pressed. */
+        for (int mb = 1; mb <= 5; mb++)
+            if (ctx->mb_down & (1 << (mb - 1)))
+                xtest_button(ctx->dpy, mb, 0);
+        ctx->mb_down = 0;
+        ctx->sx = ctx->sy = 0;
     }
     /* Touch-as-mouse works in both input modes. */
     if (ctx->dpy && ctx->touch_gesture == 1)

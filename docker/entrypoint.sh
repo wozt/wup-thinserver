@@ -1,17 +1,54 @@
 #!/bin/bash
 # WUP ThinServer session entrypoint.
 #
-# Brings up, as the unprivileged `wup` user:
-#   1. a private D-Bus session (dbus-launch)
-#   2. Xvfb virtual display ($DESKTOP_WIDTH x $DESKTOP_HEIGHT)
-#   3. PulseAudio with a null sink (the daemon captures its monitor)
-#   4. XFCE session (panel, WM, desktop)
-#   5. wup-thinserver daemon
+# Two phases:
+#   root   -- account provisioning (password, sudo), then drop privileges
+#   wup    -- the actual session: private D-Bus, Xvfb, PulseAudio, XFCE,
+#             Onboard, wup-thinserver daemon.
 #
-# SIGTERM/SIGINT stop everything cleanly; the desktop state lives in
-# /home/wup (persistent volume) — running apps do NOT survive a container
-# restart, but files/settings do.
+# Account provisioning (root phase, idempotent, runs on every start):
+#   WUP_PASSWORD        plaintext password for `wup` (env only; prefer
+#                       WUP_PASSWORD_HASH or `wup-set-password`). Never
+#                       logged. If neither is set the account keeps its
+#                       locked password ('!' in /etc/shadow): console
+#                       login and sudo stay disabled.
+#   WUP_PASSWORD_HASH   a crypt(3) hash ('openssl passwd -6 ...') applied
+#                       with usermod -p.
+#   WUP_SUDO=1          add `wup` to the sudo group.
+#   WUP_SUDO_NOPASSWD=1  passwordless sudo inside the container only
+#                       (documented convenience; the container is the
+#                       isolation boundary, not the host).
+# Runtime password change: `docker exec -u root wup-thinserver wup-set-password`
+# (interactive) — see docs/INSTALLATION.md.
 set -u
+
+if [ "$(id -u)" = "0" ]; then
+    # --- root prologue: account provisioning --------------------------------
+    if [ -n "${WUP_PASSWORD_HASH:-}" ]; then
+        usermod -p "$WUP_PASSWORD_HASH" wup
+        echo "[wup-thin] wup password set from WUP_PASSWORD_HASH"
+    elif [ -n "${WUP_PASSWORD:-}" ]; then
+        printf 'wup:%s\n' "$WUP_PASSWORD" | chpasswd
+        echo "[wup-thin] wup password set from WUP_PASSWORD"
+        unset WUP_PASSWORD
+    else
+        echo "[wup-thin] no WUP_PASSWORD(_HASH): 'wup' account stays locked"
+    fi
+    if [ "${WUP_SUDO:-0}" = "1" ]; then
+        usermod -aG sudo wup
+        echo "[wup-thin] wup added to the sudo group"
+    fi
+    if [ "${WUP_SUDO_NOPASSWD:-0}" = "1" ]; then
+        printf 'wup ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/90-wup-nopasswd
+        chmod 440 /etc/sudoers.d/90-wup-nopasswd
+        echo "[wup-thin] passwordless sudo enabled inside the container"
+    fi
+    exec setpriv --reuid=wup --regid=wup --init-groups -- \
+        /usr/local/bin/wup-thin-entrypoint --session "$@"
+fi
+
+[ "${1:-}" = "--session" ] || { echo "wup-thin-entrypoint: must run as root or --session as wup" >&2; exit 1; }
+shift
 
 DISPLAY_NUM="${DISPLAY_NUM:-99}"
 export DISPLAY=":${DISPLAY_NUM}"
@@ -19,6 +56,7 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}"
 export PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-/tmp/pulse-runtime}"
 export DESKTOP_WIDTH="${DESKTOP_WIDTH:-1280}"
 export DESKTOP_HEIGHT="${DESKTOP_HEIGHT:-720}"
+export HOME=/home/wup
 
 log() { echo "[wup-thin] $*"; }
 
@@ -41,6 +79,11 @@ cleanup() {
     exit 0
 }
 trap cleanup TERM INT
+
+# --- 0b. persistent-config migrations (idempotent, backs up what it edits) ---
+if [ -x /usr/local/bin/wup-migrate-settings ]; then
+    /usr/local/bin/wup-migrate-settings || log "settings migration reported issues"
+fi
 
 # --- 1. Xvfb -----------------------------------------------------------------
 Xvfb "$DISPLAY" -screen 0 "${DESKTOP_WIDTH}x${DESKTOP_HEIGHT}x24" \
@@ -90,14 +133,20 @@ xfconf-query -c xfce4-desktop -p /desktop-icons/style 2>/dev/null && \
 xfconf-query -c xfwm4 -p /general/button_layout -s "O|SHMC" 2>/dev/null || true
 
 # --- 4. Onboard (on-screen keyboard) ----------------------------------------
-# Start it hidden-ish; the GamePad X button toggles it via `onboard-toggle`.
+# Apply the desktop keyboard defaults once per home volume (marker file),
+# honouring ONBOARD_* env overrides every start.
+if [ -x /usr/local/bin/onboard-setup ]; then
+    /usr/local/bin/onboard-setup || log "onboard-setup reported issues"
+fi
+# Start it hidden; auto-show on text fields and the GamePad X toggle
+# (onboard-toggle, a real D-Bus visibility toggle) bring it back.
 onboard >/tmp/onboard.log 2>&1 &
 PIDS="$PIDS $!"
 sleep 2
-# Hide it at startup; auto-show on text fields stays enabled.
-gdbus call --session --dest org.onboard.Onboard --object-path /Onboard \
-    --method org.onboard.Onboard.Hide >/dev/null 2>&1 || true
-log "Onboard started (toggle with GamePad X)"
+gdbus call --session --dest org.onboard.Onboard \
+    --object-path /org/onboard/Onboard/Keyboard \
+    --method org.onboard.Onboard.Keyboard.Hide >/dev/null 2>&1 || true
+log "Onboard started (auto-show + X toggle)"
 
 # --- 5. wup-thinserver -------------------------------------------------------
 if [ ! -f "$WUP_THIN_CONFIG" ]; then

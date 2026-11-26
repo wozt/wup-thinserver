@@ -53,7 +53,9 @@ typedef struct {
     int ncmd;
     char cmd_preset[64];      /* active preset name, "" = custom */
     int touch_as_mouse;
-    int right_stick_mouse;
+    int left_stick_mouse;    /* WUP_THIN_DESKTOP: left stick = relative pointer */
+    int right_stick_mouse;   /* right stick = relative pointer (legacy) */
+    int right_stick_scroll;  /* WUP_THIN_DESKTOP: right stick = wheel scroll */
 } input_cfg_t;
 
 typedef struct {

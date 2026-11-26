@@ -27,8 +27,73 @@ docker compose restart           # restart
 docker compose down              # stop and remove container (volume kept)
 docker compose up -d --build     # rebuild after pulling changes
 docker compose logs -f           # logs
-docker compose exec wup bash     # shell inside (user wup)
+docker compose exec --user wup wup-thinserver bash   # shell as the desktop user
 ```
+
+The entrypoint starts as root only to provision the `wup` account, then drops
+to `wup` via `setpriv` — the session itself is never root. `docker compose
+exec` defaults to root; use `--user wup` (or `docker exec -u wup`) for a
+desktop-user shell, `-u root` for administration.
+
+### Hostname, account and password
+
+- The container hostname defaults to **`wup-thinserver`** (`hostname` inside,
+  terminal prompt `wup@wup-thinserver:~$`). Override with `THIN_HOSTNAME` in
+  `.env`. The host machine's hostname is untouched.
+- The desktop user is **`wup`** with home `/home/wup` (persistent volume).
+- By default the account has a **locked password**: no console login, no
+  sudo. The remote desktop does not need it — the GamePad is the only
+  intended input path.
+
+Set a password (pick one):
+
+```sh
+# a) one-shot env (not persisted across `down`; use .env to persist)
+#    .env:  WUP_PASSWORD=...   or   WUP_PASSWORD_HASH=$(openssl passwd -6 '...')
+docker compose up -d
+
+# b) after the container runs (interactive, never logged):
+docker exec -it -u root wup-thinserver wup-set-password
+
+# c) password hash without a TTY:
+docker exec -u root wup-thinserver usermod -p '$(openssl passwd -6 SECRET)' wup
+```
+
+Optional in-container sudo (does **not** affect the host; the container is
+the isolation boundary):
+
+```sh
+# .env: WUP_SUDO=1            -> wup in the sudo group (sudo asks the password)
+#      WUP_SUDO_NOPASSWD=1    -> passwordless sudo inside the container only
+docker compose up -d
+```
+
+### Installing extra packages
+
+```sh
+docker exec -u root wup-thinserver apt-get update
+docker exec -u root wup-thinserver apt-get install -y <pkg>
+```
+
+- Survives `docker compose restart` / `stop`+`start` (container filesystem
+  is kept).
+- **Lost on `docker compose down` + `up`** (container recreated). For
+  permanent additions either add the package to `docker/Dockerfile` (and
+  rebuild) or commit a derived image — runtime `apt` installs are not part
+  of the persistent `wup-home` volume.
+
+### Configuration migration
+
+On every start the entrypoint runs idempotent migrations against the
+persistent home volume — no `down -v` needed for software updates:
+
+- `wup-migrate-settings` rewrites `~/.config/wup-thinserver/settings.json`
+  to the current schema (desktop controller bindings, Onboard command) and
+  keeps a `.pre-desktop-migration.bak` backup.
+- `onboard-setup` applies the docked/auto-show Onboard defaults once
+  (marker file); `ONBOARD_*` env vars override on every start.
+- Documents, Firefox profiles, downloads and unrelated XFCE settings are
+  never touched.
 
 ### Persistent data
 

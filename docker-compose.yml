@@ -28,6 +28,7 @@ services:
         DESKTOP_HEIGHT: ${DESKTOP_HEIGHT:-720}
     image: wup-thinserver:latest
     container_name: wup-thinserver
+    hostname: ${THIN_HOSTNAME:-wup-thinserver}
     init: true                 # tini: proper signal forwarding + reaping
     network_mode: host         # see rationale above
     environment:
@@ -38,6 +39,18 @@ services:
       KEYBOARD_VARIANT: ${KEYBOARD_VARIANT:-}
       LOCALE: ${LOCALE:-C.UTF-8}
       WUP_THIN_CONFIG: /home/wup/.config/wup-thinserver/settings.json
+      # Account provisioning (all optional; see docs/INSTALLATION.md):
+      #   WUP_PASSWORD / WUP_PASSWORD_HASH — set the `wup` login password
+      #   WUP_SUDO=1                  — add wup to the sudo group
+      #   WUP_SUDO_NOPASSWD=1        — passwordless sudo in-container
+      # Prefer a .env file or `docker exec -u root ... wup-set-password`;
+      # never commit real passwords.
+      WUP_PASSWORD: ${WUP_PASSWORD:-}
+      WUP_PASSWORD_HASH: ${WUP_PASSWORD_HASH:-}
+      WUP_SUDO: ${WUP_SUDO:-0}
+      WUP_SUDO_NOPASSWD: ${WUP_SUDO_NOPASSWD:-0}
+      ONBOARD_DOCK_HEIGHT: ${ONBOARD_DOCK_HEIGHT:-190}
+      ONBOARD_LAYOUT: ${ONBOARD_LAYOUT:-}
     volumes:
       # Persistent GamePad user home: Firefox profile, downloads, XFCE and
       # daemon settings survive container recreation.
