@@ -263,7 +263,8 @@ static void *server_thread(void *arg) {
         set_status(srv, "looking for GamePad...");
 
         apply_quality_env(s);
-        wupstream *pad = wupstream_open(s->pad_ip[0] ? s->pad_ip : NULL, 8000);
+        wupstream *pad = wupstream_open_port(s->pad_ip[0] ? s->pad_ip : NULL,
+            s->listen_port, s->listen_address[0] ? s->listen_address : NULL, 8000);
         if (!pad) {
             set_status(srv, "no GamePad found, retrying...");
             usleep(2000000);

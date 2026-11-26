@@ -55,6 +55,8 @@ void settings_defaults(settings_t *s) {
     s->kbps = 10000;
     s->gop = 0;
     s->pad_brightness = -1;
+    s->listen_port = 50001;
+    s->listen_address[0] = 0;
     s->audio_pc_to_pad = 1;
     s->audio_pad_to_pc = 0;
     s->pad_volume_controls_pc = 1; /* Preserve previous default behavior */
@@ -142,6 +144,8 @@ settings_t *settings_load(void) {
     JsonObject *root = json_node_get_object(root_node);
 
     json_str(root, "pad_ip", s->pad_ip, sizeof s->pad_ip);
+    s->listen_port = json_int(root, "listen_port", s->listen_port);
+    json_str(root, "listen_address", s->listen_address, sizeof s->listen_address);
     s->source_type = json_int(root, "source_type", s->source_type);
     s->aspect = json_int(root, "aspect", s->aspect);
     json_str(root, "preset_name", s->preset_name, sizeof s->preset_name);
@@ -278,6 +282,9 @@ settings_t *settings_load(void) {
 static char *settings_json(const settings_t *s) {
     JsonObject *root = json_object_new();
     if (s->pad_ip[0]) json_object_set_string_member(root, "pad_ip", s->pad_ip);
+    json_object_set_int_member(root, "listen_port", s->listen_port);
+    if (s->listen_address[0])
+        json_object_set_string_member(root, "listen_address", s->listen_address);
     json_object_set_int_member(root, "source_type", s->source_type);
     json_object_set_int_member(root, "aspect", s->aspect);
     json_object_set_string_member(root, "preset_name", s->preset_name);

@@ -1,4 +1,5 @@
 #include "config.h"
+#include <arpa/inet.h>
 #include <string.h>
 
 const char *config_validate(const settings_t *s) {
@@ -27,6 +28,13 @@ const char *config_validate(const settings_t *s) {
         return "input.gyro_sens must be between 1 and 400";
     if (s->pad_brightness != -1 && (s->pad_brightness < 1 || s->pad_brightness > 6))
         return "pad_brightness must be -1 (automatic) or 1..6";
+    if (s->listen_port < 1 || s->listen_port > 65535)
+        return "listen_port must be between 1 and 65535";
+    if (s->listen_address[0]) {
+        struct in_addr a;
+        if (inet_pton(AF_INET, s->listen_address, &a) != 1)
+            return "listen_address must be a numeric IPv4 address or empty";
+    }
     if (s->source_type == SRC_REGION &&
         (s->source.w <= 0 || s->source.h <= 0))
         return "region source needs a positive width and height";

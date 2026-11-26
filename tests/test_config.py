@@ -87,6 +87,23 @@ class ConfigTest(unittest.TestCase):
             r = run_check(self.home, {"pad_brightness": good})
             self.assertEqual(r.returncode, 0, (good, r.stderr))
 
+    def test_listen_port_range(self):
+        for bad in (0, -1, 65536, 99999):
+            r = run_check(self.home, {"listen_port": bad})
+            self.assertEqual(r.returncode, 2, (bad, r.stdout, r.stderr))
+            self.assertIn("listen_port", r.stderr)
+        for good in (1, 50001, 65535):
+            r = run_check(self.home, {"listen_port": good})
+            self.assertEqual(r.returncode, 0, (good, r.stderr))
+
+    def test_listen_address_ipv4(self):
+        r = run_check(self.home, {"listen_address": "192.168.1.10"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for bad in ("example.com", "999.1.1.1", "::1", "192.168.1.300"):
+            r = run_check(self.home, {"listen_address": bad})
+            self.assertEqual(r.returncode, 2, (bad, r.stdout, r.stderr))
+            self.assertIn("listen_address", r.stderr)
+
     def test_commands_and_mouse_buttons_accepted(self):
         r = run_check(self.home, {"input": {
             "commands": [""] * 17 + ["onboard-toggle"],

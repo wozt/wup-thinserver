@@ -186,6 +186,76 @@ void wupstream_control_reply(wupstream *w, int reqid, int status, int mode) {
     code.write_text(text)
 
 
+def extend_direct_connections(source):
+    """WUP_THIN_PROTOCOL: direct/unicast pad discovery + observed source port.
+
+    'B' beacons may arrive unicast (a ThinClient dialing a specific server
+    endpoint) or broadcast (LAN discovery); either way the pad's source
+    port is whatever its socket/NAT gave it, not necessarily 50000, so the
+    observed port is recorded and kept updated from session packets.
+    wupstream_open_port() binds the discovery socket to a configurable UDP
+    port (default 50001) and optionally a specific local address;
+    wupstream_open() keeps the historical signature for existing callers.
+    """
+    header = source / "host/wupstream.h"
+    code = source / "host/wupstream.c"
+
+    decl_anchor = "wupstream *wupstream_open(const char *ip, int timeout_ms);"
+    decls = decl_anchor + """
+wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
+                               int timeout_ms);   /* port<=0: 50001; bind_addr: numeric IPv4 or NULL/"" for any */"""
+    text = header.read_text()
+    if decls not in text:
+        if text.count(decl_anchor) != 1:
+            raise RuntimeError(f"Unexpected pinned header: {header}")
+        header.write_text(text.replace(decl_anchor, decls, 1))
+
+    # rename the implementation and give it the new parameters
+    sig_old = "wupstream *wupstream_open(const char *ip, int timeout_ms) {"
+    sig_new = ("wupstream *wupstream_open(const char *ip, int timeout_ms) {\n"
+               "    return wupstream_open_port(ip, 0, NULL, timeout_ms);\n}\n"
+               "wupstream *wupstream_open_port(const char *ip, int port,\n"
+               "                               const char *bind_addr, int timeout_ms) {")
+    text = code.read_text()
+    if sig_new not in text:
+        if text.count(sig_old) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(sig_old, sig_new, 1)
+
+    # discovery socket: configurable port + optional bind address
+    port_old = "        me.sin_port = htons(50001);"
+    port_new = ("        me.sin_port = htons(port > 0 && port < 65536 ? port : 50001);\n"
+                "        if (bind_addr && bind_addr[0]) {\n"
+                "            unsigned long a = inet_addr(bind_addr);\n"
+                "            me.sin_addr.s_addr = a == INADDR_NONE ? htonl(INADDR_ANY) : a;\n"
+                "        }")
+    if port_new not in text:
+        if text.count(port_old) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(port_old, port_new, 1)
+
+    # record the beacon's real source port: direct clients may not use 50000
+    beacon_old = ("if (recvfrom(find, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl)"
+                  " >= 1 && b[0] == 'B') w->pad.sin_addr = from.sin_addr;")
+    beacon_new = ("if (recvfrom(find, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl)"
+                  " >= 1 && b[0] == 'B') { w->pad.sin_addr = from.sin_addr;"
+                  " w->pad.sin_port = from.sin_port; }")
+    if beacon_new not in text:
+        if text.count(beacon_old) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(beacon_old, beacon_new, 1)
+
+    # keep the peer port fresh from every accepted session packet (NAT-safe)
+    pump_old = "        if (from.sin_addr.s_addr != w->pad.sin_addr.s_addr) continue;"
+    pump_new = (pump_old + "\n        w->pad.sin_port = from.sin_port;")
+    if pump_new not in text:
+        if text.count(pump_old) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(pump_old, pump_new, 1)
+
+    code.write_text(text)
+
+
 def copy_atomic(src, target):
     tmp = target.with_name(target.name + ".tmp")
     shutil.copyfile(src, tmp)
@@ -203,6 +273,7 @@ def main(argv):
     extend_i420(source)
     extend_brightness_commands(source)
     extend_control_packets(source)
+    extend_direct_connections(source)
     # The upstream build script already pins x264 and applies the DRH patch.
     run(["sh", "host/build.sh"], cwd=source)
     archive = source / "build" / "host" / "libwupstream.a"

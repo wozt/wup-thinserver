@@ -60,6 +60,8 @@ typedef struct {
 
 typedef struct {
     char pad_ip[64];       /* empty = first pad found */
+    int listen_port;       /* UDP port for 'B' discovery/direct beacons (1-65535) */
+    char listen_address[64]; /* numeric IPv4 to bind; "" = all interfaces */
     source_t source;
     int source_type;
     int aspect;            /* ASPECT_* */
