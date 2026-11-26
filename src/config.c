@@ -21,6 +21,8 @@ const char *config_validate(const settings_t *s) {
         return "input.sensitivity must be between 1 and 400";
     if (s->input.gyro_mode < GYRO_OFF || s->input.gyro_mode > GYRO_STICK)
         return "input.gyro_mode must be 0 (off), 1 (mouse) or 2 (stick)";
+    if (s->input.gyro_sens < 1 || s->input.gyro_sens > 400)
+        return "input.gyro_sens must be between 1 and 400";
     if (s->source_type == SRC_REGION &&
         (s->source.w <= 0 || s->source.h <= 0))
         return "region source needs a positive width and height";

@@ -18,6 +18,7 @@
 #include "server.h"
 #include "config.h"
 #include "input.h"
+#include "control.h"
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -147,6 +148,17 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
 
     server_t *srv = server_new(s);
+    GError *control_error = NULL;
+    control_t *control = control_start(s, srv, &control_error);
+    if (!control) {
+        fprintf(stderr, "%s: control interface unavailable: %s\n",
+                prog, control_error->message);
+        syslog(LOG_WARNING, "control interface unavailable: %s",
+               control_error->message);
+        g_clear_error(&control_error);
+    } else {
+        fprintf(stderr, "%s: control socket %s\n", prog, control_path(control));
+    }
     if (s->autostart_stream)
         server_request_stream(srv);
 
@@ -165,11 +177,13 @@ int main(int argc, char **argv) {
             last_state = st;
         }
         if (got_signal) break;
-        sleep(1);
+        control_poll(control);
+        usleep(50000);
     }
 
     int sig = got_signal;
     fprintf(stderr, "%s: signal %d, shutting down\n", prog, sig);
+    control_stop(control);
     server_request_stop(srv);
     server_destroy(srv);       /* joins the stream thread, releases inputs */
     settings_save(s);

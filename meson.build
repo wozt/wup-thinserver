@@ -6,6 +6,7 @@ project('wup-thinserver', 'c',
 # owned by the container entrypoint / native session launcher.
 
 glib = dependency('glib-2.0')
+gio = dependency('gio-2.0')
 x11 = dependency('x11')
 xrandr = dependency('xrandr')
 xtst = dependency('xtst')
@@ -38,6 +39,7 @@ wup_dep = custom_target('wupstream-embedded',
 executable('wup-thinserver',
   'src/main.c',
   'src/config.c',
+  'src/control.c',
   'src/settings.c',
   'src/x11util.c',
   'src/capture.c',
@@ -50,7 +52,7 @@ executable('wup-thinserver',
   wup_dep[1],
   c_args: ['-DWUP_THIN_VERSION="' + meson.project_version() + '"'],
   include_directories: [include_directories('src')],
-  dependencies: [glib, x11, xrandr, xtst, xext, xinerama, json_glib,
+  dependencies: [glib, gio, x11, xrandr, xtst, xext, xinerama, json_glib,
                  threads, m_dep, swscale, drm, gbm, egl, gles,
                  xcb, xcbshm, x11xcb, pulse, cairo, pangocairo],
   link_with: wup_dep[0],
@@ -75,6 +77,7 @@ cap_test = executable('wup-capture-test',
 py = find_program('python3')
 test('config', py, args: [files('tests/test_config.py')])
 test('geometry', py, args: [files('tests/test_geometry.py')])
+test('control-ipc', py, args: [files('tests/test_control.py')], timeout: 30)
 test('capture-xvfb', find_program('sh'),
   args: [files('tests/run_capture_test.sh')],
   depends: cap_test, timeout: 60)

@@ -1,9 +1,13 @@
+#define _GNU_SOURCE
 #include "settings.h"
 #include "input.h" /* WBTN_* indices for the default command map */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #define CFG_DIR ".config/wup-thinserver"
 #define CFG_FILE "settings.json"
@@ -268,7 +272,7 @@ settings_t *settings_load(void) {
     return s;
 }
 
-void settings_save(settings_t *s) {
+static char *settings_json(const settings_t *s) {
     JsonObject *root = json_object_new();
     if (s->pad_ip[0]) json_object_set_string_member(root, "pad_ip", s->pad_ip);
     json_object_set_int_member(root, "source_type", s->source_type);
@@ -361,9 +365,6 @@ void settings_save(settings_t *s) {
     }
     json_object_set_array_member(root, "presets", pres);
 
-    char *dir = g_path_get_dirname(settings_path());
-    g_mkdir_with_parents(dir, 0700);
-    g_free(dir);
     JsonGenerator *g = json_generator_new();
     JsonNode *root_node = json_node_new(JSON_NODE_OBJECT);
     json_node_take_object(root_node, root);
@@ -372,7 +373,57 @@ void settings_save(settings_t *s) {
     json_generator_set_root(g, root_node);
     json_node_free(root_node);
     char *out = json_generator_to_data(g, NULL);
-    g_file_set_contents(settings_path(), out, -1, NULL);
-    g_free(out);
     g_object_unref(g);
+    return out;
+}
+
+gboolean settings_save_checked(const settings_t *s, GError **error) {
+    const char *path = settings_path();
+    char *dir = g_path_get_dirname(path);
+    if (g_mkdir_with_parents(dir, 0700) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "cannot create configuration directory %s: %s",
+                    dir, g_strerror(errno));
+        g_free(dir);
+        return FALSE;
+    }
+    char *tmp = g_strdup_printf("%s/.settings.json.XXXXXX", dir);
+    g_free(dir);
+    int fd = g_mkstemp_full(tmp, O_WRONLY | O_CLOEXEC, 0600);
+    if (fd < 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "cannot create temporary configuration: %s", g_strerror(errno));
+        g_free(tmp);
+        return FALSE;
+    }
+    char *out = settings_json(s);
+    gsize len = strlen(out), off = 0;
+    gboolean ok = TRUE;
+    while (off < len) {
+        ssize_t n = write(fd, out + off, len - off);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) { ok = FALSE; break; }
+        off += (gsize)n;
+    }
+    if (ok && fsync(fd) != 0) ok = FALSE;
+    int saved_errno = errno;
+    if (close(fd) != 0 && ok) { ok = FALSE; saved_errno = errno; }
+    if (ok && rename(tmp, path) != 0) { ok = FALSE; saved_errno = errno; }
+    if (!ok) {
+        unlink(tmp);
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(saved_errno),
+                    "cannot replace configuration %s: %s", path,
+                    g_strerror(saved_errno));
+    }
+    g_free(out);
+    g_free(tmp);
+    return ok;
+}
+
+void settings_save(settings_t *s) {
+    GError *error = NULL;
+    if (!settings_save_checked(s, &error)) {
+        g_warning("Cannot save settings: %s", error->message);
+        g_clear_error(&error);
+    }
 }

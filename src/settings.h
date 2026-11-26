@@ -88,5 +88,7 @@ typedef struct {
 
 settings_t *settings_load(void);
 void settings_save(settings_t *s);
+/* Atomic same-directory replacement. The old file remains intact on error. */
+gboolean settings_save_checked(const settings_t *s, GError **error);
 void settings_defaults(settings_t *s);
 const char *settings_path(void);

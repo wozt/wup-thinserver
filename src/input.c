@@ -149,6 +149,7 @@ typedef struct {
 static chord_t btn_chord[WBTN_COUNT];
 static chord_t stick_chord[8];
 static int keys_loaded = 0;
+static void input_release_held(input_ctx_t *ctx);
 
 /* friendly modifier names -> X keysym names */
 static const char *mod_keysym_name(const char *tok) {
@@ -207,7 +208,10 @@ static void apply_keysyms(const input_cfg_t *cfg) {
 }
 
 void input_reload_keys(input_ctx_t *ctx, const settings_t *s) {
-    (void)ctx;
+    /* Release using the old parsed mapping before replacing it. This is
+       required for live rebinding: otherwise a held modifier or mouse
+       button can remain down forever after its binding disappears. */
+    if (ctx) input_release_held(ctx);
     apply_keysyms(&s->input);
 }
 
