@@ -34,18 +34,53 @@ wup-thinserver daemon  --X11-->  session display (Xvfb :99)
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
-## Quick start (Docker, recommended)
+## Quick start
+
+### Docker (recommended, primary deployment)
+
+Prerequisites: Docker Engine + Compose v2. No other dependencies.
 
 ```sh
-docker compose up -d --build     # build and start
+git clone https://github.com/wozt/wup-thinserver
+cd wup-thinserver
+docker compose up -d --build     # build image + start session
 docker compose logs -f           # follow logs
-docker compose down              # stop (session data persists in a volume)
+docker compose ps                # status / healthcheck
+docker compose down              # stop (home data persists in volume wup-home)
+docker compose up -d             # start again
 ```
 
-Then start **WUP ThinClient** on the GamePad and connect to this machine's IP.
+Environment overrides (see docs/CONFIGURATION.md): `DESKTOP_WIDTH`,
+`DESKTOP_HEIGHT`, `KEYBOARD_LAYOUT`, `KEYBOARD_VARIANT`, `LOCALE`,
+`DISPLAY_NUM`. Persistent data: `docker volume inspect
+wup-thinserver_wup-home` (backup = copy the volume; reset =
+`docker compose down -v`).
 
-See [docs/INSTALLATION.md](docs/INSTALLATION.md) and
-[docs/BUILD.md](docs/BUILD.md).
+### Native build (Debian 13 / compatible)
+
+Prerequisites: `meson ninja-build pkg-config gcc` plus the X11/XCB,
+PulseAudio, cairo/pango, json-glib and swscale development packages
+(listed in `docker/Dockerfile` and docs/BUILD.md).
+
+```sh
+meson setup build
+meson compile -C build -j8
+meson test -C build --print-errorlogs     # 3 tests incl. real Xvfb capture
+./build/wup-thinserver --check            # validate config
+./build/wup-thinserver                    # needs DISPLAY of a session
+```
+
+The build fetches and pins `libwupstream` from `wozt/wup-stream` itself —
+no WUP Stream checkout required.
+
+### Connect
+
+Start **WUP ThinClient** on the GamePad (same LAN), set the server IP
+(**Y** in its menu) or leave "any server", and the desktop appears.
+Input mapping defaults are in `config/settings.example.json`.
+
+See [docs/INSTALLATION.md](docs/INSTALLATION.md),
+[docs/BUILD.md](docs/BUILD.md), [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Status
 
