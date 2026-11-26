@@ -50,6 +50,17 @@ docker compose down              # stop (home data persists in volume wup-home)
 docker compose up -d             # start again
 ```
 
+**GamePad mode (virtual controller):** on hosts with `/dev/uinput`, use
+the overlay — or simply `./scripts/up-gamepad.sh`:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.gamepad.yml up -d --build
+```
+
+See `docker-compose.gamepad.yml` for what it enables and its limits
+(shared host kernel — not full input isolation). Without it, Desktop
+mode works unchanged.
+
 Environment overrides (see `.env.example` and docs/CONFIGURATION.md):
 `THIN_HOSTNAME` (default `wup-thinserver`), `DESKTOP_WIDTH`,
 `DESKTOP_HEIGHT`, `KEYBOARD_LAYOUT`, `KEYBOARD_VARIANT`, `LOCALE`,
