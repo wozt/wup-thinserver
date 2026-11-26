@@ -28,6 +28,7 @@ gles = dependency('glesv2')
 threads = dependency('threads')
 m_dep = meson.get_compiler('c').find_library('m', required: true)
 gtk3 = dependency('gtk+-3.0', required: get_option('settings_app'))
+gdkx11 = dependency('gdk-x11-3.0', required: gtk3.found())
 sdl2 = dependency('sdl2', required: false)
 
 # libwupstream (WUP Stream protocol + patched x264), pinned upstream source
@@ -67,7 +68,7 @@ if gtk3.found()
     'src/settings.c',
     wup_dep[1],
     include_directories: [include_directories('src')],
-    dependencies: [gtk3, gio, json_glib],
+    dependencies: [gtk3, gdkx11, gio, json_glib, x11],
     install: true)
   install_data('data/wup-thinserver-settings.desktop',
     install_dir: get_option('datadir') / 'applications')

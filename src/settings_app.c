@@ -2,6 +2,9 @@
 #include "settings.h"
 #include "input.h"
 #include <gtk/gtk.h>
+#include <gdk/gdkx.h>
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
 #include <json-glib/json-glib.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -45,12 +48,15 @@ typedef struct {
 typedef struct {
     GtkWidget *window, *status, *connection, *monitor;
     GtkWidget *mode, *mode_status, *deadzone, *sensitivity, *invert_y, *touch_mouse;
-    GtkWidget *gyro_mode, *gyro_sens, *left_mode, *right_mode;
+    GtkWidget *gyro_mode, *gyro_sens, *left_mode, *right_mode, *brightness;
+    GtkWidget *brightness_value;
     GtkWidget *stick_entries[8];
     GtkWidget *microphone, *volume;
     BindingRow bindings[WBTN_COUNT];
     input_cfg_t input;
     int audio_pad_to_pc, pad_volume_controls_pc;
+    int pad_brightness;      /* -1 auto, 1..6 discrete levels */
+    guint brightness_flush;  /* debounce id for live slider changes */
     gboolean loading;
 } App;
 
@@ -247,6 +253,12 @@ static void widgets_from_config(App *app) {
         gtk_entry_set_text(GTK_ENTRY(app->stick_entries[i]), app->input.stick_keys[i]);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->microphone), app->audio_pad_to_pc);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->volume), app->pad_volume_controls_pc);
+    int brightness = app->pad_brightness < 0 ? 0 : app->pad_brightness;
+    gtk_range_set_value(GTK_RANGE(app->brightness), brightness);
+    char brightness_text[48];
+    if (brightness == 0) g_strlcpy(brightness_text, "Auto (pad default)", sizeof brightness_text);
+    else snprintf(brightness_text, sizeof brightness_text, "Level %d of 6", brightness);
+    gtk_label_set_text(GTK_LABEL(app->brightness_value), brightness_text);
     app->loading = FALSE;
 }
 
@@ -268,6 +280,8 @@ static gboolean load_current(App *app, gboolean quiet) {
     if (config) {
         app->audio_pad_to_pc = (int)json_object_get_int_member_with_default(config, "audio_pad_to_pc", 0);
         app->pad_volume_controls_pc = (int)json_object_get_int_member_with_default(config, "pad_volume_controls_pc", 1);
+        app->pad_brightness = (int)json_object_get_int_member_with_default(config, "pad_brightness", -1);
+        if (app->pad_brightness < -1 || app->pad_brightness > 6) app->pad_brightness = -1;
     }
     widgets_from_config(app);
     if (!quiet) set_status(app, "Current settings loaded", FALSE);
@@ -444,6 +458,9 @@ static gboolean monitor_tick(gpointer data) {
             (int)json_object_get_int_member_with_default(state, "tx", 0),
             (int)json_object_get_int_member_with_default(state, "ty", 0),
             (int)json_object_get_int_member_with_default(state, "volume", 0));
+        if (json_object_has_member(state, "backlight"))
+            g_string_append_printf(pressed, "\nBacklight level: %d (1-6, -1 unknown)",
+                (int)json_object_get_int_member(state, "backlight"));
         gtk_label_set_text(GTK_LABEL(app->monitor), pressed->str); g_string_free(pressed, TRUE);
     } else gtk_label_set_text(GTK_LABEL(app->monitor), "No controller input report available.");
     g_object_unref(parser); g_free(reply); return G_SOURCE_CONTINUE;
@@ -467,7 +484,9 @@ static GtkWidget *combo_text(const char *const *items, int count) {
     return combo;
 }
 
-static GtkWidget *bindings_page(App *app) {
+/* Bindings live in two sub-columns of nine rows inside one frame; the
+   whole dashboard scrolls vertically instead of using tabs. */
+static GtkWidget *bindings_frame(App *app) {
     static const char *actions[] = {
         "Disabled", "Keyboard key / shortcut", "Mouse: left button",
         "Mouse: middle button", "Mouse: right button", "Mouse wheel: up",
@@ -480,28 +499,36 @@ static GtkWidget *bindings_page(App *app) {
         "Advanced command (settings file)"
     };
     GtkWidget *frame = frame_new("input-gaming-symbolic", "Controller bindings");
-    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     GtkWidget *grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(grid), 2);
     gtk_grid_set_column_spacing(GTK_GRID(grid), 5); gtk_container_set_border_width(GTK_CONTAINER(grid), 4);
-    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Control"), 0, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Action"), 1, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Captured key / shortcut"), 2, 0, 1, 1);
-    for (int i = 0; i < WBTN_COUNT; i++) {
-        GtkWidget *label = gtk_label_new(button_names[i]); gtk_widget_set_halign(label, GTK_ALIGN_START);
-        app->bindings[i].combo = combo_text(actions, G_N_ELEMENTS(actions));
-        app->bindings[i].entry = gtk_entry_new();
-        gtk_entry_set_placeholder_text(GTK_ENTRY(app->bindings[i].entry), "Select, type, or press a key");
-        g_signal_connect(app->bindings[i].combo, "changed", G_CALLBACK(action_changed), &app->bindings[i]);
-        g_signal_connect(app->bindings[i].entry, "key-press-event", G_CALLBACK(capture_key), NULL);
-        gtk_grid_attach(GTK_GRID(grid), label, 0, i + 1, 1, 1);
-        gtk_grid_attach(GTK_GRID(grid), app->bindings[i].combo, 1, i + 1, 1, 1);
-        gtk_grid_attach(GTK_GRID(grid), app->bindings[i].entry, 2, i + 1, 1, 1);
-        if (i == WBTN_HOME)
-            gtk_widget_set_tooltip_text(label, "HOME: a tap is forwarded to the desktop; "
-                "ThinClient keeps 5 s hold, HOME+X, HOME+Up/Down and HOME+B local.");
+    for (int c = 0; c < 2; c++) {
+        int x = c * 3;
+        gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Control"), x, 0, 1, 1);
+        gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Action"), x + 1, 0, 1, 1);
+        gtk_grid_attach(GTK_GRID(grid),
+            gtk_label_new("Captured key / shortcut"), x + 2, 0, 1, 1);
+        for (int i = 0; i < 9; i++) {
+            int b = c * 9 + i, y = i + 1;
+            GtkWidget *label = gtk_label_new(button_names[b]);
+            gtk_widget_set_halign(label, GTK_ALIGN_START);
+            app->bindings[b].combo = combo_text(actions, G_N_ELEMENTS(actions));
+            app->bindings[b].entry = gtk_entry_new();
+            gtk_entry_set_width_chars(GTK_ENTRY(app->bindings[b].entry), 12);
+            gtk_entry_set_placeholder_text(GTK_ENTRY(app->bindings[b].entry),
+                "Select, type, or press a key");
+            g_signal_connect(app->bindings[b].combo, "changed",
+                G_CALLBACK(action_changed), &app->bindings[b]);
+            g_signal_connect(app->bindings[b].entry, "key-press-event",
+                G_CALLBACK(capture_key), NULL);
+            gtk_grid_attach(GTK_GRID(grid), label, x, y, 1, 1);
+            gtk_grid_attach(GTK_GRID(grid), app->bindings[b].combo, x + 1, y, 1, 1);
+            gtk_grid_attach(GTK_GRID(grid), app->bindings[b].entry, x + 2, y, 1, 1);
+            if (b == WBTN_HOME)
+                gtk_widget_set_tooltip_text(label, "HOME: a tap is forwarded to the desktop; "
+                    "ThinClient keeps 5 s hold, HOME+X, HOME+Up/Down and HOME+B local.");
+        }
     }
-    gtk_container_add(GTK_CONTAINER(scroll), grid); gtk_container_add(GTK_CONTAINER(frame), scroll);
+    gtk_container_add(GTK_CONTAINER(frame), grid);
     return frame;
 }
 
@@ -510,33 +537,38 @@ static void grid_row(GtkGrid *grid, int row, const char *label, GtkWidget *widge
     gtk_grid_attach(grid, l, 0, row, 1, 1); gtk_grid_attach(grid, widget, 1, row, 1, 1);
 }
 
-static GtkWidget *input_page(App *app) {
-    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    GtkWidget *outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); gtk_container_set_border_width(GTK_CONTAINER(outer), 4);
-    GtkWidget *sticks = frame_new("input-gaming-symbolic", "Analog sticks");
-    GtkWidget *grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(grid), 3); gtk_grid_set_column_spacing(GTK_GRID(grid), 6);
-    gtk_container_set_border_width(GTK_CONTAINER(grid), 4);
+static GtkWidget *mode_frame(App *app) {
+    GtkWidget *frame = frame_new("video-display-symbolic", "Input mode & device");
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_container_set_border_width(GTK_CONTAINER(box), 4);
     static const char *input_modes[] = {"Gamepad (uinput / evdev)", "Desktop (keyboard and mouse)"};
-    static const char *left_modes[] = {"Disabled", "Mouse movement", "Keyboard directions"};
-    static const char *right_modes[] = {"Disabled", "Mouse movement", "Scrolling", "Keyboard directions"};
     app->mode = combo_text(input_modes, 2);
     app->mode_status = gtk_label_new("Checking virtual gamepad availability...");
     gtk_label_set_xalign(GTK_LABEL(app->mode_status), 0);
     gtk_label_set_line_wrap(GTK_LABEL(app->mode_status), TRUE);
+    gtk_box_pack_start(GTK_BOX(box), app->mode, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), app->mode_status, FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(frame), box);
+    return frame;
+}
+
+static GtkWidget *sticks_frame(App *app) {
+    GtkWidget *frame = frame_new("input-gaming-symbolic", "Analog sticks");
+    GtkWidget *grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(grid), 3); gtk_grid_set_column_spacing(GTK_GRID(grid), 6);
+    gtk_container_set_border_width(GTK_CONTAINER(grid), 4);
+    static const char *left_modes[] = {"Disabled", "Mouse movement", "Keyboard directions"};
+    static const char *right_modes[] = {"Disabled", "Mouse movement", "Scrolling", "Keyboard directions"};
     app->left_mode = combo_text(left_modes, 3); app->right_mode = combo_text(right_modes, 4);
     app->deadzone = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 500, 10);
     app->sensitivity = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 1, 400, 5);
     gtk_scale_set_value_pos(GTK_SCALE(app->deadzone), GTK_POS_RIGHT);
     gtk_scale_set_value_pos(GTK_SCALE(app->sensitivity), GTK_POS_RIGHT);
     app->invert_y = gtk_check_button_new_with_label("Invert vertical axes");
-    grid_row(GTK_GRID(grid), 0, "Input mode", app->mode);
-    gtk_grid_attach(GTK_GRID(grid), app->mode_status, 0, 1, 2, 1);
-    grid_row(GTK_GRID(grid), 2, "Left stick", app->left_mode);
-    grid_row(GTK_GRID(grid), 3, "Right stick", app->right_mode);
-    grid_row(GTK_GRID(grid), 4, "Deadzone", app->deadzone);
-    grid_row(GTK_GRID(grid), 5, "Sensitivity", app->sensitivity);
-    gtk_grid_attach(GTK_GRID(grid), app->invert_y, 1, 6, 1, 1);
+    grid_row(GTK_GRID(grid), 0, "Left stick", app->left_mode);
+    grid_row(GTK_GRID(grid), 1, "Right stick", app->right_mode);
+    grid_row(GTK_GRID(grid), 2, "Deadzone", app->deadzone);
+    grid_row(GTK_GRID(grid), 3, "Sensitivity", app->sensitivity);
+    gtk_grid_attach(GTK_GRID(grid), app->invert_y, 1, 4, 1, 1);
     static const char *dirs[] = {"Left L", "Left R", "Left U", "Left D", "Right L", "Right R", "Right U", "Right D"};
     GtkWidget *keys = gtk_grid_new(); gtk_grid_set_column_spacing(GTK_GRID(keys), 3);
     for (int i = 0; i < 8; i++) {
@@ -545,36 +577,122 @@ static GtkWidget *input_page(App *app) {
         g_signal_connect(app->stick_entries[i], "key-press-event", G_CALLBACK(capture_key), NULL);
         gtk_grid_attach(GTK_GRID(keys), app->stick_entries[i], i % 4, i / 4, 1, 1);
     }
-    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Directional keys"), 0, 7, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), keys, 1, 7, 1, 1); gtk_container_add(GTK_CONTAINER(sticks), grid);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Directional keys"), 0, 5, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), keys, 1, 5, 1, 1); gtk_container_add(GTK_CONTAINER(frame), grid);
+    return frame;
+}
 
-    GtkWidget *touch = frame_new("input-touchpad-symbolic", "Touch, motion and audio");
-    GtkWidget *tgrid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(tgrid), 3); gtk_grid_set_column_spacing(GTK_GRID(tgrid), 6);
-    gtk_container_set_border_width(GTK_CONTAINER(tgrid), 4);
+/* The slider is discrete: 0 = leave the pad's level alone, 1..6 = the
+   hardware backlight levels. Changes are debounced and sent live through
+   the control socket as set_pad_brightness (persisted by the daemon). */
+static gboolean brightness_flush(gpointer data) {
+    App *app = data; app->brightness_flush = 0;
+    int value = (int)gtk_range_get_value(GTK_RANGE(app->brightness));
+    int level = value == 0 ? -1 : value;
+    if (level == app->pad_brightness) return G_SOURCE_REMOVE;
+    char request[96];
+    snprintf(request, sizeof request,
+        "{\"op\":\"set_pad_brightness\",\"level\":%d}", level);
+    GError *error = NULL;
+    char *reply = ipc_request(request, &error);
+    if (!reply) {
+        set_status(app, error->message, TRUE); g_clear_error(&error);
+        gtk_range_set_value(GTK_RANGE(app->brightness),
+            app->pad_brightness < 0 ? 0 : app->pad_brightness);
+        return G_SOURCE_REMOVE;
+    }
+    JsonParser *parser; JsonObject *root;
+    if (!response_root(reply, &parser, &root, &error)) {
+        set_status(app, error->message, TRUE); g_clear_error(&error);
+        g_object_unref(parser); g_free(reply); return G_SOURCE_REMOVE;
+    }
+    app->pad_brightness = level;
+    set_status(app, "Pad brightness updated", FALSE);
+    g_object_unref(parser); g_free(reply);
+    return G_SOURCE_REMOVE;
+}
+
+static void brightness_changed(GtkRange *range, gpointer data) {
+    App *app = data;
+    if (app->loading) return;
+    int value = (int)gtk_range_get_value(range);
+    char text[48];
+    if (value == 0) g_strlcpy(text, "Auto (pad default)", sizeof text);
+    else snprintf(text, sizeof text, "Level %d of 6", value);
+    gtk_label_set_text(GTK_LABEL(app->brightness_value), text);
+    if (app->brightness_flush) g_source_remove(app->brightness_flush);
+    app->brightness_flush = g_timeout_add(400, brightness_flush, app);
+}
+
+static GtkWidget *display_frame(App *app) {
+    GtkWidget *frame = frame_new("video-display-symbolic", "Display & audio");
+    GtkWidget *grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(grid), 3); gtk_grid_set_column_spacing(GTK_GRID(grid), 6);
+    gtk_container_set_border_width(GTK_CONTAINER(grid), 4);
+    app->brightness = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 6, 1);
+    gtk_scale_set_draw_value(GTK_SCALE(app->brightness), FALSE);
+    gtk_scale_add_mark(GTK_SCALE(app->brightness), 0, GTK_POS_BOTTOM, "Auto");
+    for (int i = 1; i <= 6; i++)
+        gtk_scale_add_mark(GTK_SCALE(app->brightness), i, GTK_POS_BOTTOM, NULL);
+    app->brightness_value = gtk_label_new("Auto (pad default)");
+    gtk_widget_set_halign(app->brightness_value, GTK_ALIGN_START);
+    app->microphone = gtk_check_button_new_with_label("Forward GamePad microphone (disabled by default)");
+    app->volume = gtk_check_button_new_with_label("Physical volume slider controls session audio");
+    g_signal_connect(app->brightness, "value-changed", G_CALLBACK(brightness_changed), app);
+    grid_row(GTK_GRID(grid), 0, "Screen brightness", app->brightness);
+    gtk_grid_attach(GTK_GRID(grid), app->brightness_value, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), app->microphone, 0, 2, 2, 1);
+    gtk_grid_attach(GTK_GRID(grid), app->volume, 0, 3, 2, 1);
+    gtk_container_add(GTK_CONTAINER(frame), grid);
+    return frame;
+}
+
+static GtkWidget *touch_frame(App *app) {
+    GtkWidget *frame = frame_new("input-touchpad-symbolic", "Touch & motion");
+    GtkWidget *grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(grid), 3); gtk_grid_set_column_spacing(GTK_GRID(grid), 6);
+    gtk_container_set_border_width(GTK_CONTAINER(grid), 4);
     app->touch_mouse = gtk_check_button_new_with_label("Touchscreen controls the pointer");
     static const char *gyro_modes[] = {"Disabled", "Mouse movement", "Virtual stick"};
     app->gyro_mode = combo_text(gyro_modes, 3);
     app->gyro_sens = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 1, 400, 5);
     gtk_scale_set_value_pos(GTK_SCALE(app->gyro_sens), GTK_POS_RIGHT);
-    app->microphone = gtk_check_button_new_with_label("Forward GamePad microphone (disabled by default)");
-    app->volume = gtk_check_button_new_with_label("Physical volume slider controls session audio");
-    gtk_grid_attach(GTK_GRID(tgrid), app->touch_mouse, 0, 0, 2, 1);
-    grid_row(GTK_GRID(tgrid), 1, "Gyroscope", app->gyro_mode);
-    grid_row(GTK_GRID(tgrid), 2, "Gyroscope sensitivity", app->gyro_sens);
-    gtk_grid_attach(GTK_GRID(tgrid), app->microphone, 0, 3, 2, 1);
-    gtk_grid_attach(GTK_GRID(tgrid), app->volume, 0, 4, 2, 1);
-    gtk_container_add(GTK_CONTAINER(touch), tgrid);
+    gtk_grid_attach(GTK_GRID(grid), app->touch_mouse, 0, 0, 2, 1);
+    grid_row(GTK_GRID(grid), 1, "Gyroscope", app->gyro_mode);
+    grid_row(GTK_GRID(grid), 2, "Gyroscope sensitivity", app->gyro_sens);
+    gtk_container_add(GTK_CONTAINER(frame), grid);
+    return frame;
+}
 
-    GtkWidget *diag = frame_new("utilities-system-monitor-symbolic", "Live input monitor");
+static GtkWidget *monitor_frame(App *app) {
+    GtkWidget *frame = frame_new("utilities-system-monitor-symbolic", "Live input monitor");
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_container_set_border_width(GTK_CONTAINER(box), 4);
     app->monitor = gtk_label_new("No controller input report available.");
     gtk_label_set_xalign(GTK_LABEL(app->monitor), 0); gtk_label_set_line_wrap(GTK_LABEL(app->monitor), TRUE);
-    gtk_widget_set_margin_start(app->monitor, 5); gtk_widget_set_margin_end(app->monitor, 5);
-    gtk_widget_set_margin_top(app->monitor, 5); gtk_widget_set_margin_bottom(app->monitor, 5);
-    gtk_container_add(GTK_CONTAINER(diag), app->monitor);
-    gtk_box_pack_start(GTK_BOX(outer), sticks, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(outer), touch, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(outer), diag, FALSE, FALSE, 0);
-    gtk_container_add(GTK_CONTAINER(scroll), outer); return scroll;
+    gtk_box_pack_start(GTK_BOX(box), app->monitor, FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(frame), box);
+    return frame;
+}
+
+/* Single-page dashboard: bindings on the left, stacked sections on the
+   right; the outer scrolled window handles small windows. */
+static GtkWidget *dashboard_page(App *app) {
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
+        GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    GtkWidget *columns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_container_set_border_width(GTK_CONTAINER(columns), 6);
+    GtkWidget *left = bindings_frame(app);
+    gtk_widget_set_hexpand(left, TRUE);
+    gtk_box_pack_start(GTK_BOX(columns), left, TRUE, TRUE, 0);
+    GtkWidget *right = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_box_pack_start(GTK_BOX(right), mode_frame(app), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(right), sticks_frame(app), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(right), display_frame(app), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(right), touch_frame(app), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(right), monitor_frame(app), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(columns), right, FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(scroll), columns);
+    return scroll;
 }
 
 static gboolean title_press(GtkWidget *widget, GdkEventButton *event, gpointer data) {
@@ -620,19 +738,19 @@ static void add_resize_zones(GtkOverlay *overlay, App *app) {
 
 static void apply_css(void) {
     const char *css =
-        ".wup-settings, .wup-settings box, .wup-settings grid, .wup-settings notebook,"
-        ".wup-settings notebook stack, .wup-settings scrolledwindow, .wup-settings viewport {"
-        "background:#111923;color:#dce7f1;font-size:11px;}"
+        ".wup-settings, .wup-settings box, .wup-settings grid,"
+        ".wup-settings scrolledwindow, .wup-settings viewport {"
+        "background:#111923;color:#dce7f1;font-size:13px;}"
         ".wup-settings .titlebar {background:#192532;border-bottom:1px solid #35485b;}"
-        ".wup-settings .brand {font-size:12px;font-weight:bold;color:#96cdf9;}"
+        ".wup-settings .brand {font-size:14px;font-weight:bold;color:#96cdf9;}"
         ".wup-settings frame.settings-section>border {border:1px solid #35485b;border-radius:0;}"
-        ".wup-settings .section-title {font-size:12px;font-weight:bold;color:#96cdf9;}"
-        ".wup-settings button,.wup-settings entry,.wup-settings combobox button {min-height:19px;padding:0 5px;border-radius:0;}"
+        ".wup-settings .section-title {font-size:14px;font-weight:bold;color:#96cdf9;}"
+        ".wup-settings button,.wup-settings entry,.wup-settings combobox button {min-height:22px;padding:0 6px;border-radius:0;}"
         ".wup-settings entry {background:#0f1b27;color:#dce7f1;border:1px solid #35485b;}"
         ".wup-settings button,.wup-settings combobox button {background:#253547;color:#dce7f1;border:1px solid #35485b;}"
         ".wup-settings button:hover {background:#334c66;} .wup-settings button:active {background:#285277;}"
-        ".wup-settings notebook tab {padding:2px 7px;} .wup-settings scrollbar {background:#192532;}"
-        ".wup-settings scale slider {min-width:12px;min-height:12px;border-radius:0;}"
+        ".wup-settings scrollbar {background:#192532;}"
+        ".wup-settings scale slider {min-width:14px;min-height:14px;border-radius:0;}"
         "tooltip,menu {border-radius:0;}";
     GtkCssProvider *provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(provider, css, -1, NULL);
@@ -641,9 +759,34 @@ static void apply_css(void) {
     g_object_unref(provider);
 }
 
+/* Default to the window manager's real work area (_NET_WORKAREA), so the
+   XFCE panel stays visible and no taskbar height is hardcoded. Falls back
+   to the previous default when the property is unavailable. */
+static void size_to_workarea(GtkWindow *window) {
+    GdkScreen *screen = gtk_window_get_screen(window);
+    if (!GDK_IS_X11_SCREEN(screen)) return;
+    Display *dpy = gdk_x11_display_get_xdisplay(gdk_display_get_default());
+    Window root = gdk_x11_window_get_xid(gdk_screen_get_root_window(screen));
+    Atom atom = XInternAtom(dpy, "_NET_WORKAREA", False);
+    Atom type = None; int format = 0;
+    unsigned long nitems = 0, after = 0;
+    unsigned char *data = NULL;
+    if (XGetWindowProperty(dpy, root, atom, 0, 4, False, XA_CARDINAL,
+            &type, &format, &nitems, &after, &data) != Success ||
+        !data || nitems < 4 || format != 32) {
+        if (data) XFree(data);
+        return;
+    }
+    long *area = (long *)data;
+    gtk_window_move(window, (int)area[0], (int)area[1]);
+    gtk_window_set_default_size(window, (int)area[2], (int)area[3]);
+    XFree(data);
+}
+
 static void app_activate(GtkApplication *application, gpointer data) {
     App *app = data; settings_t defaults; settings_defaults(&defaults); app->input = defaults.input;
     app->audio_pad_to_pc = defaults.audio_pad_to_pc; app->pad_volume_controls_pc = defaults.pad_volume_controls_pc;
+    app->pad_brightness = -1;
     app->window = gtk_application_window_new(application);
     gtk_window_set_title(GTK_WINDOW(app->window), "WUP ThinServer Settings");
     gtk_window_set_default_size(GTK_WINDOW(app->window), 820, 450);
@@ -689,9 +832,7 @@ static void app_activate(GtkApplication *application, gpointer data) {
     g_signal_connect_swapped(minimize, "clicked", G_CALLBACK(gtk_window_iconify), app->window);
     g_signal_connect(maximize, "clicked", G_CALLBACK(maximize_clicked), app->window);
     g_signal_connect_swapped(close, "clicked", G_CALLBACK(gtk_window_close), app->window);
-    GtkWidget *notebook = gtk_notebook_new();
-    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), bindings_page(app), gtk_label_new("Bindings"));
-    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), input_page(app), gtk_label_new("Sticks, touch & monitor"));
+    GtkWidget *dashboard = dashboard_page(app);
     GtkWidget *footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5); gtk_container_set_border_width(GTK_CONTAINER(footer), 3);
     app->status = gtk_label_new("Ready"); gtk_label_set_xalign(GTK_LABEL(app->status), 0);
     GtkWidget *defaults_button = gtk_button_new_with_label("Restore defaults");
@@ -706,10 +847,12 @@ static void app_activate(GtkApplication *application, gpointer data) {
     g_signal_connect(reload_button, "clicked", G_CALLBACK(reload_clicked), app);
     g_signal_connect(apply_button, "clicked", G_CALLBACK(apply_clicked), app);
     gtk_box_pack_start(GTK_BOX(main), title, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(main), notebook, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(main), dashboard, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(main), footer, FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(overlay), main); add_resize_zones(GTK_OVERLAY(overlay), app);
-    gtk_container_add(GTK_CONTAINER(app->window), overlay); apply_css(); gtk_widget_show_all(app->window);
+    gtk_container_add(GTK_CONTAINER(app->window), overlay);
+    apply_css(); size_to_workarea(GTK_WINDOW(app->window));
+    gtk_widget_show_all(app->window);
     load_current(app, FALSE); g_timeout_add(250, monitor_tick, app);
 }
 
