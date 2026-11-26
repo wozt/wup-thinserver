@@ -167,7 +167,8 @@ static gboolean mouse_array(JsonObject *o, input_cfg_t *input, GError **error) {
 
 static gboolean parse_input(JsonObject *object, const input_cfg_t *old,
                             input_cfg_t *input, GError **error) {
-    if (!int_member(object, "deadzone", &input->deadzone, error) ||
+    if (!int_member(object, "mode", &input->mode, error) ||
+        !int_member(object, "deadzone", &input->deadzone, error) ||
         !int_member(object, "sensitivity", &input->sensitivity, error) ||
         !int_member(object, "gyro_mode", &input->gyro_mode, error) ||
         !int_member(object, "gyro_sens", &input->gyro_sens, error) ||
@@ -212,7 +213,7 @@ static void add_strings(JsonBuilder *b, char *base, int count, size_t stride) {
 static void add_input(JsonBuilder *b, const input_cfg_t *in) {
 #define ADD_INT(name) json_builder_set_member_name(b, #name); json_builder_add_int_value(b, in->name)
     json_builder_begin_object(b);
-    ADD_INT(deadzone); ADD_INT(sensitivity); ADD_INT(invert_y);
+    ADD_INT(mode); ADD_INT(deadzone); ADD_INT(sensitivity); ADD_INT(invert_y);
     ADD_INT(gyro_mode); ADD_INT(gyro_sens); ADD_INT(touch_as_mouse);
     ADD_INT(left_stick_mouse); ADD_INT(right_stick_mouse);
     ADD_INT(right_stick_scroll);
@@ -264,6 +265,16 @@ static char *make_response(control_t *control, gboolean ok, const char *message,
     gboolean connected = server_input_snapshot(control->server, &input);
     json_builder_set_member_name(b, "connected");
     json_builder_add_boolean_value(b, connected);
+    int input_mode = INMODE_KBMOUSE, gamepad_available = 0;
+    char input_status[160];
+    server_input_mode_snapshot(control->server, &input_mode, &gamepad_available,
+                               input_status, sizeof input_status);
+    json_builder_set_member_name(b, "input_mode");
+    json_builder_add_string_value(b, input_mode == INMODE_GAMEPAD ? "gamepad" : "desktop");
+    json_builder_set_member_name(b, "gamepad_available");
+    json_builder_add_boolean_value(b, gamepad_available);
+    json_builder_set_member_name(b, "input_status");
+    json_builder_add_string_value(b, input_status);
     if (connected) {
 #define ADD_REPORT(name) json_builder_set_member_name(b, #name); json_builder_add_int_value(b, input.name)
         ADD_REPORT(buttons); ADD_REPORT(lx); ADD_REPORT(ly); ADD_REPORT(rx);
@@ -333,6 +344,16 @@ static char *handle_request(control_t *control, const char *data, gssize length)
     if (!strcmp(op, "validate_input")) {
         g_object_unref(parser);
         return make_response(control, TRUE, "configuration is valid", FALSE);
+    }
+    if (candidate.input.mode == INMODE_GAMEPAD &&
+        control->settings->input.mode != INMODE_GAMEPAD) {
+        char probe_error[160];
+        if (input_probe_gamepad(probe_error, sizeof probe_error) != 0) {
+            char message[224];
+            snprintf(message, sizeof message, "Gamepad mode unavailable: %s", probe_error);
+            g_object_unref(parser);
+            return make_response(control, FALSE, message, FALSE);
+        }
     }
     if (!settings_save_checked(&candidate, &error)) {
         char *reply = make_response(control, FALSE, error->message, FALSE);

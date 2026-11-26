@@ -64,7 +64,8 @@ it), Firefox ESR, Thunar, Mousepad, xfce4-terminal.
 
 The desktop also contains **WUP ThinServer Settings**. Open its desktop or
 application-menu launcher to change controller bindings, stick behavior,
-touch, gyro and audio input options. Valid changes take effect immediately
+touch, gyro, audio input options, and the active Desktop/Gamepad input mode.
+Valid changes take effect immediately
 and are saved without restarting the daemon, stream, XFCE, or container. See
 [the settings application](docs/SETTINGS_APPLICATION.md) and
 [local control protocol](docs/CONTROL_IPC.md).
@@ -78,7 +79,7 @@ PulseAudio, cairo/pango, json-glib and swscale development packages
 ```sh
 meson setup build                    # GTK settings app: auto-detected
 meson compile -C build -j8
-meson test -C build --print-errorlogs     # 4 tests incl. IPC and real Xvfb capture
+meson test -C build --print-errorlogs     # 6 tests incl. IPC, capture and evdev/SDL
 ./build/wup-thinserver --check            # validate config
 ./build/wup-thinserver                    # needs DISPLAY of a session
 ./build/wup-thinserver-settings           # needs GTK3 and the running daemon

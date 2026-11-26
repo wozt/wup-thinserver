@@ -3,6 +3,7 @@
 #include "wupstream.h"
 #include <X11/Xlib.h>
 #include <stdint.h>
+#include <stddef.h>
 
 /* Button order shared with settings.input.keys[] */
 enum {
@@ -25,6 +26,14 @@ void input_dispatch(input_ctx_t *ctx, const settings_t *s, const wupstream_input
 void input_free(input_ctx_t *ctx);
 void input_reload_keys(input_ctx_t *ctx, const settings_t *s); /* call after editing keys[] */
 int input_gamepad_ok(input_ctx_t *ctx);  /* 1 if the virtual gamepad was created */
+int input_active_mode(input_ctx_t *ctx);
+const char *input_gamepad_error(input_ctx_t *ctx);
+/* Release the old mode before switching. On uinput failure, Desktop mode
+ * remains active and a useful error is returned. */
+int input_set_mode(input_ctx_t *ctx, const settings_t *s,
+                   char *error, size_t error_size);
+/* Create and immediately destroy a device to validate access/capabilities. */
+int input_probe_gamepad(char *error, size_t error_size);
 void input_calib_start(input_ctx_t *ctx);            /* ~3 s of stillness -> bias */
 int input_calib_poll(input_ctx_t *ctx, double out[3]); /* 1 = fresh bias in out[] */
 /* rect (root coords) the pad touch maps onto; w<=0 -> whole screen */

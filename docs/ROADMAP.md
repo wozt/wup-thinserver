@@ -12,8 +12,11 @@ Status terms: **planned**, **in progress**, **implemented**,
    snapshot publication.
 3. **Integrated settings application — in progress.** The real GTK editor,
    live monitor, icon, menu entry, and persistent-home desktop migration are
-   implemented. Profiles, detailed gesture controls, seven JSON themes, and
-   JSON localization remain planned. Docker runtime validation passes.
+   implemented. Host-side Desktop/Gamepad switching, evdev mapping and SDL
+   detection are automatically tested; Docker device integration and the
+   HOME+X client shortcut remain in progress. Profiles, detailed gesture
+   controls, seven JSON themes, and JSON localization remain planned. Docker
+   runtime validation passes for Desktop mode.
 4. **PC protocol client — planned.** Independent C11/Meson repository,
    discovery/handshake, exact packet reassembly, and GamePad-targeted H.264
    reconstruction feasibility before SDL presentation claims.

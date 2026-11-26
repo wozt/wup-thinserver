@@ -33,7 +33,10 @@ Copied verbatim from `wup-stream-server-linux/src/` unless noted:
 - `input.c/h` — **modified**: `kb_buttons()` honours `commands[]` (press
   edge, `/bin/sh -c`, detached) and `mouse_buttons[]` (XTest button edges)
   before falling back to keysym chords; live key reload releases all held
-  old-map inputs before parsing the replacement.
+  old-map inputs before parsing the replacement. The upstream uinput path now
+  has a stable `WUP ThinServer Gamepad` identity, Nintendo-position evdev
+  mapping, checked setup errors, real Desktop fallback, capability probing,
+  and state-safe live mode transitions.
 - `x11util.c/h` — unmodified XRandR/EWMH/XTest helpers.
 - `i18n.c/h` — **modified**: GTK UI helpers (`wup_i18n_fill_combo`,
   `wup_i18n_translate_tree`) removed for the headless daemon; catalog and

@@ -82,6 +82,26 @@ class ControlTest(unittest.TestCase):
         response = self.request({"op": "get"})
         self.assertTrue(response["ok"])
         self.assertEqual(len(response["config"]["input"]["keys"]), 18)
+        self.assertEqual(response["config"]["input"]["mode"], 1)
+        self.assertIn(response["state"]["input_mode"], ("desktop", "gamepad"))
+        self.assertIn("gamepad_available", response["state"])
+        self.assertTrue(response["state"]["input_status"])
+
+    def test_gamepad_mode_preflight_and_persistence(self):
+        response = self.request({"op": "get"})
+        current = response["config"]["input"]
+        original = current["mode"]
+        current["mode"] = 0
+        switched = self.request({"op": "apply_input", "input": current})
+        if response["state"]["gamepad_available"]:
+            self.assertTrue(switched["ok"], switched)
+            self.assertEqual(json.loads(self.config_path.read_text())["input"]["mode"], 0)
+        else:
+            self.assertFalse(switched["ok"])
+            self.assertIn("Gamepad mode unavailable", switched["error"])
+        current["mode"] = original
+        restored = self.request({"op": "apply_input", "input": current})
+        self.assertTrue(restored["ok"], restored)
 
     def test_invalid_binding_is_rejected_without_file_change(self):
         current = self.request({"op": "get"})["config"]["input"]

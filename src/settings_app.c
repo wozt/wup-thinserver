@@ -44,7 +44,7 @@ typedef struct {
 
 typedef struct {
     GtkWidget *window, *status, *connection, *monitor;
-    GtkWidget *deadzone, *sensitivity, *invert_y, *touch_mouse;
+    GtkWidget *mode, *mode_status, *deadzone, *sensitivity, *invert_y, *touch_mouse;
     GtkWidget *gyro_mode, *gyro_sens, *left_mode, *right_mode;
     GtkWidget *stick_entries[8];
     GtkWidget *microphone, *volume;
@@ -171,7 +171,7 @@ static void set_status(App *app, const char *text, gboolean error) {
 
 static void parse_input_object(App *app, JsonObject *in) {
 #define READ_INT(name) app->input.name = (int)json_object_get_int_member_with_default(in, #name, app->input.name)
-    READ_INT(deadzone); READ_INT(sensitivity); READ_INT(invert_y);
+    READ_INT(mode); READ_INT(deadzone); READ_INT(sensitivity); READ_INT(invert_y);
     READ_INT(gyro_mode); READ_INT(gyro_sens); READ_INT(touch_as_mouse);
     READ_INT(left_stick_mouse); READ_INT(right_stick_mouse);
     READ_INT(right_stick_scroll);
@@ -229,6 +229,7 @@ static void widgets_from_config(App *app) {
         action_changed(GTK_COMBO_BOX(app->bindings[i].combo), &app->bindings[i]);
     }
     gtk_range_set_value(GTK_RANGE(app->deadzone), app->input.deadzone);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->mode), app->input.mode);
     gtk_range_set_value(GTK_RANGE(app->sensitivity), app->input.sensitivity);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->invert_y), app->input.invert_y);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->touch_mouse), app->input.touch_as_mouse);
@@ -291,6 +292,7 @@ static void config_from_widgets(App *app) {
             g_strlcpy(app->input.keys[i], action_key(action), sizeof app->input.keys[i]);
     }
     app->input.deadzone = (int)gtk_range_get_value(GTK_RANGE(app->deadzone));
+    app->input.mode = gtk_combo_box_get_active(GTK_COMBO_BOX(app->mode));
     app->input.sensitivity = (int)gtk_range_get_value(GTK_RANGE(app->sensitivity));
     app->input.invert_y = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->invert_y));
     app->input.touch_as_mouse = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->touch_mouse));
@@ -330,7 +332,7 @@ static char *apply_request_json(App *app) {
     json_builder_set_member_name(b, "pad_volume_controls_pc"); json_builder_add_int_value(b, app->pad_volume_controls_pc);
     json_builder_set_member_name(b, "input"); json_builder_begin_object(b);
 #define ADD_INT(name) json_builder_set_member_name(b, #name); json_builder_add_int_value(b, app->input.name)
-    ADD_INT(deadzone); ADD_INT(sensitivity); ADD_INT(invert_y); ADD_INT(gyro_mode);
+    ADD_INT(mode); ADD_INT(deadzone); ADD_INT(sensitivity); ADD_INT(invert_y); ADD_INT(gyro_mode);
     ADD_INT(gyro_sens); ADD_INT(touch_as_mouse); ADD_INT(left_stick_mouse);
     ADD_INT(right_stick_mouse); ADD_INT(right_stick_scroll);
 #undef ADD_INT
@@ -415,6 +417,14 @@ static gboolean monitor_tick(gpointer data) {
     JsonObject *state = json_object_get_object_member(root, "state");
     const char *connection = json_object_get_string_member_with_default(state, "connection", "unknown");
     const char *status = json_object_get_string_member_with_default(state, "status", "");
+    const char *input_status = json_object_get_string_member_with_default(
+        state, "input_status", "Input mode status unavailable");
+    gboolean gamepad_available = json_object_get_boolean_member_with_default(
+        state, "gamepad_available", FALSE);
+    char *mode_text = g_strdup_printf("%s%s", input_status,
+        gamepad_available ? "" : " — /dev/uinput is not available");
+    gtk_label_set_text(GTK_LABEL(app->mode_status), mode_text);
+    g_free(mode_text);
     char *headline = g_strdup_printf("%s — %s", connection, status);
     gtk_label_set_text(GTK_LABEL(app->connection), headline); g_free(headline);
     if (json_object_get_boolean_member_with_default(state, "connected", FALSE)) {
@@ -512,19 +522,26 @@ static GtkWidget *input_page(App *app) {
     GtkWidget *sticks = frame_new("input-gaming-symbolic", "Analog sticks");
     GtkWidget *grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(grid), 3); gtk_grid_set_column_spacing(GTK_GRID(grid), 6);
     gtk_container_set_border_width(GTK_CONTAINER(grid), 4);
+    static const char *input_modes[] = {"Gamepad (uinput / evdev)", "Desktop (keyboard and mouse)"};
     static const char *left_modes[] = {"Disabled", "Mouse movement", "Keyboard directions"};
     static const char *right_modes[] = {"Disabled", "Mouse movement", "Scrolling", "Keyboard directions"};
+    app->mode = combo_text(input_modes, 2);
+    app->mode_status = gtk_label_new("Checking virtual gamepad availability...");
+    gtk_label_set_xalign(GTK_LABEL(app->mode_status), 0);
+    gtk_label_set_line_wrap(GTK_LABEL(app->mode_status), TRUE);
     app->left_mode = combo_text(left_modes, 3); app->right_mode = combo_text(right_modes, 4);
     app->deadzone = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 500, 10);
     app->sensitivity = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 1, 400, 5);
     gtk_scale_set_value_pos(GTK_SCALE(app->deadzone), GTK_POS_RIGHT);
     gtk_scale_set_value_pos(GTK_SCALE(app->sensitivity), GTK_POS_RIGHT);
     app->invert_y = gtk_check_button_new_with_label("Invert vertical axes");
-    grid_row(GTK_GRID(grid), 0, "Left stick", app->left_mode);
-    grid_row(GTK_GRID(grid), 1, "Right stick", app->right_mode);
-    grid_row(GTK_GRID(grid), 2, "Deadzone", app->deadzone);
-    grid_row(GTK_GRID(grid), 3, "Sensitivity", app->sensitivity);
-    gtk_grid_attach(GTK_GRID(grid), app->invert_y, 1, 4, 1, 1);
+    grid_row(GTK_GRID(grid), 0, "Input mode", app->mode);
+    gtk_grid_attach(GTK_GRID(grid), app->mode_status, 0, 1, 2, 1);
+    grid_row(GTK_GRID(grid), 2, "Left stick", app->left_mode);
+    grid_row(GTK_GRID(grid), 3, "Right stick", app->right_mode);
+    grid_row(GTK_GRID(grid), 4, "Deadzone", app->deadzone);
+    grid_row(GTK_GRID(grid), 5, "Sensitivity", app->sensitivity);
+    gtk_grid_attach(GTK_GRID(grid), app->invert_y, 1, 6, 1, 1);
     static const char *dirs[] = {"Left L", "Left R", "Left U", "Left D", "Right L", "Right R", "Right U", "Right D"};
     GtkWidget *keys = gtk_grid_new(); gtk_grid_set_column_spacing(GTK_GRID(keys), 3);
     for (int i = 0; i < 8; i++) {
@@ -533,8 +550,8 @@ static GtkWidget *input_page(App *app) {
         g_signal_connect(app->stick_entries[i], "key-press-event", G_CALLBACK(capture_key), NULL);
         gtk_grid_attach(GTK_GRID(keys), app->stick_entries[i], i % 4, i / 4, 1, 1);
     }
-    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Directional keys"), 0, 5, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), keys, 1, 5, 1, 1); gtk_container_add(GTK_CONTAINER(sticks), grid);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Directional keys"), 0, 7, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), keys, 1, 7, 1, 1); gtk_container_add(GTK_CONTAINER(sticks), grid);
 
     GtkWidget *touch = frame_new("input-touchpad-symbolic", "Touch, motion and audio");
     GtkWidget *tgrid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(tgrid), 3); gtk_grid_set_column_spacing(GTK_GRID(tgrid), 6);

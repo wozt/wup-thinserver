@@ -30,18 +30,20 @@ static const uint32_t wbtn_bit[WBTN_COUNT] = {
 
 /* evdev codes per button index (gamepad mode) */
 static const uint16_t wbtn_evkey[WBTN_COUNT] = {
-    BTN_EAST, BTN_SOUTH, BTN_WEST, BTN_NORTH,          /* A B X Y: physical Nintendo positions */
+    BTN_EAST, BTN_SOUTH, BTN_NORTH, BTN_WEST,          /* A B X Y: physical Nintendo positions */
     BTN_DPAD_LEFT, BTN_DPAD_RIGHT, BTN_DPAD_UP, BTN_DPAD_DOWN,
     BTN_TL2, BTN_TR2,                                   /* ZL ZR analog triggers -> digital */
     BTN_TL, BTN_TR,                                     /* L R shoulders */
     BTN_START, BTN_SELECT,                              /* + - */
     BTN_MODE,                                           /* HOME */
     BTN_THUMBL, BTN_THUMBR,                             /* L3 R3 */
-    KEY_TV                                             /* TV */
+    BTN_TRIGGER_HAPPY1                                 /* TV: gamepad-only auxiliary button */
 };
 
 struct input_ctx {
     int uifd;                    /* -1 if not in gamepad mode */
+    int active_mode;             /* actual mode; may fall back to Desktop */
+    char gamepad_error[160];
     Display *dpy;                /* XTest connection (kbmouse mode) */
     uint32_t prev_buttons;
     int prev_lx, prev_ly, prev_rx, prev_ry;
@@ -76,44 +78,59 @@ struct input_ctx {
 
 /* ---------- uinput virtual gamepad ---------- */
 
-static int uinput_open(void) {
-    int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
-    if (fd < 0) return -1;
+static int uinput_fail(int fd, char *error, size_t error_size,
+                       const char *operation) {
+    if (error && error_size)
+        snprintf(error, error_size, "%s: %s", operation, strerror(errno));
+    if (fd >= 0) close(fd);
+    return -1;
+}
 
-    ioctl(fd, UI_SET_EVBIT, EV_SYN);
-    ioctl(fd, UI_SET_EVBIT, EV_KEY);
-    ioctl(fd, UI_SET_EVBIT, EV_ABS);
+static int uinput_open(char *error, size_t error_size) {
+    int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+    if (fd < 0) return uinput_fail(-1, error, error_size, "cannot open /dev/uinput");
+
+    if (ioctl(fd, UI_SET_EVBIT, EV_SYN) != 0 ||
+        ioctl(fd, UI_SET_EVBIT, EV_KEY) != 0 ||
+        ioctl(fd, UI_SET_EVBIT, EV_ABS) != 0)
+        return uinput_fail(fd, error, error_size, "cannot configure uinput event types");
 
     static const uint16_t keys[] = {
         BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST,
         BTN_DPAD_LEFT, BTN_DPAD_RIGHT, BTN_DPAD_UP, BTN_DPAD_DOWN,
         BTN_TL2, BTN_TR2, BTN_TL, BTN_TR,
         BTN_START, BTN_SELECT, BTN_MODE,
-        BTN_THUMBL, BTN_THUMBR, KEY_TV
+        BTN_THUMBL, BTN_THUMBR, BTN_TRIGGER_HAPPY1
     };
     for (size_t i = 0; i < sizeof(keys)/sizeof(keys[0]); i++)
-        ioctl(fd, UI_SET_KEYBIT, keys[i]);
+        if (ioctl(fd, UI_SET_KEYBIT, keys[i]) != 0)
+            return uinput_fail(fd, error, error_size, "cannot configure uinput buttons");
 
     static const uint16_t axes[] = { ABS_X, ABS_Y, ABS_RX, ABS_RY };
     for (size_t i = 0; i < sizeof(axes)/sizeof(axes[0]); i++) {
-        ioctl(fd, UI_SET_ABSBIT, axes[i]);
+        if (ioctl(fd, UI_SET_ABSBIT, axes[i]) != 0)
+            return uinput_fail(fd, error, error_size, "cannot configure uinput axes");
         struct uinput_abs_setup st;
         memset(&st, 0, sizeof st);
         st.code = axes[i];
         st.absinfo.minimum = -32767;
         st.absinfo.maximum = 32767;
-        ioctl(fd, UI_ABS_SETUP, &st);
+        if (ioctl(fd, UI_ABS_SETUP, &st) != 0)
+            return uinput_fail(fd, error, error_size, "cannot configure uinput axis range");
     }
 
     struct uinput_user_dev ud;
     memset(&ud, 0, sizeof ud);
-    snprintf(ud.name, UINPUT_MAX_NAME_SIZE, "Wii U GamePad (wupstreamd)");
+    snprintf(ud.name, UINPUT_MAX_NAME_SIZE, "WUP ThinServer Gamepad");
     ud.id.bustype = BUS_USB;
     ud.id.vendor = 0x057e;   /* Nintendo */
     ud.id.product = 0x2001;
     ud.id.version = 1;
-    if (write(fd, &ud, sizeof ud) != (ssize_t)sizeof ud) { close(fd); return -1; }
-    if (ioctl(fd, UI_DEV_CREATE) != 0) { close(fd); return -1; }
+    if (write(fd, &ud, sizeof ud) != (ssize_t)sizeof ud)
+        return uinput_fail(fd, error, error_size, "cannot configure uinput identity");
+    if (ioctl(fd, UI_DEV_CREATE) != 0)
+        return uinput_fail(fd, error, error_size, "cannot create virtual gamepad");
+    if (error && error_size) error[0] = 0;
     return fd;
 }
 
@@ -217,6 +234,22 @@ void input_reload_keys(input_ctx_t *ctx, const settings_t *s) {
 
 int input_gamepad_ok(input_ctx_t *ctx) {
     return ctx && ctx->uifd >= 0;
+}
+
+int input_active_mode(input_ctx_t *ctx) {
+    return ctx ? ctx->active_mode : INMODE_KBMOUSE;
+}
+
+const char *input_gamepad_error(input_ctx_t *ctx) {
+    return ctx && ctx->gamepad_error[0] ? ctx->gamepad_error : "virtual gamepad unavailable";
+}
+
+int input_probe_gamepad(char *error, size_t error_size) {
+    int fd = uinput_open(error, error_size);
+    if (fd < 0) return -1;
+    ioctl(fd, UI_DEV_DESTROY);
+    close(fd);
+    return 0;
 }
 
 void input_calib_start(input_ctx_t *ctx) {
@@ -459,7 +492,7 @@ static void kb_pointer(input_ctx_t *ctx, const settings_t *s, const wupstream_in
          pointer when right_stick_mouse is set instead of right_stick_scroll.
        A stick never emits keys here; stick_keys[] is a separate opt-in. */
     double sens = ic->sensitivity / 100.0;
-    if (ic->mode == INMODE_KBMOUSE) {
+    if (ctx->active_mode == INMODE_KBMOUSE) {
         int lx = in->lx, ly = in->ly;
         if (abs(lx) < dz) lx = 0;
         if (abs(ly) < dz) ly = 0;
@@ -487,7 +520,7 @@ static void kb_pointer(input_ctx_t *ctx, const settings_t *s, const wupstream_in
     }
     /* gyro -> mouse (both modes): px/frame = dps * px_per_s / 60 */
     if (ic->gyro_mode == GYRO_MOUSE ||
-        (ic->gyro_mode == GYRO_STICK && ic->mode == INMODE_KBMOUSE)) {
+        (ic->gyro_mode == GYRO_STICK && ctx->active_mode == INMODE_KBMOUSE)) {
         double g = ic->gyro_sens / 100.0;
         double dps[3];
         gyro_dps(ctx, in, dps);
@@ -507,7 +540,9 @@ static void kb_pointer(input_ctx_t *ctx, const settings_t *s, const wupstream_in
 
 input_ctx_t *input_init(const settings_t *s) {
     input_ctx_t *ctx = calloc(1, sizeof *ctx);
+    if (!ctx) return NULL;
     ctx->uifd = -1;
+    ctx->active_mode = INMODE_KBMOUSE;
     ctx->pad_volume = -1;
     ctx->scr_w = 1920; ctx->scr_h = 1080;
     memcpy(ctx->gyro_bias, s->input.gyro_bias, sizeof ctx->gyro_bias);
@@ -517,10 +552,13 @@ input_ctx_t *input_init(const settings_t *s) {
         ctx->scr_w = DisplayWidth(ctx->dpy, DefaultScreen(ctx->dpy));
         ctx->scr_h = DisplayHeight(ctx->dpy, DefaultScreen(ctx->dpy));
     }
-    if (s->input.mode == INMODE_GAMEPAD)
-        ctx->uifd = uinput_open();
-    else
+    if (s->input.mode == INMODE_GAMEPAD) {
+        ctx->uifd = uinput_open(ctx->gamepad_error, sizeof ctx->gamepad_error);
+        if (ctx->uifd >= 0) ctx->active_mode = INMODE_GAMEPAD;
+        else load_keysyms(&s->input); /* real Desktop fallback */
+    } else {
         load_keysyms(&s->input);
+    }
     return ctx;
 }
 
@@ -593,6 +631,41 @@ void input_free(input_ctx_t *ctx) {
     free(ctx);
 }
 
+int input_set_mode(input_ctx_t *ctx, const settings_t *s,
+                   char *error, size_t error_size) {
+    if (!ctx || !s) {
+        if (error && error_size) snprintf(error, error_size, "input context unavailable");
+        return -1;
+    }
+    int requested = s->input.mode;
+    input_release_held(ctx);
+    if (requested == ctx->active_mode) {
+        if (error && error_size) error[0] = 0;
+        if (requested == INMODE_KBMOUSE) apply_keysyms(&s->input);
+        return 0;
+    }
+    if (ctx->uifd >= 0) {
+        ioctl(ctx->uifd, UI_DEV_DESTROY);
+        close(ctx->uifd);
+        ctx->uifd = -1;
+    }
+    ctx->active_mode = INMODE_KBMOUSE;
+    if (requested == INMODE_GAMEPAD) {
+        ctx->uifd = uinput_open(ctx->gamepad_error, sizeof ctx->gamepad_error);
+        if (ctx->uifd < 0) {
+            apply_keysyms(&s->input);
+            if (error && error_size)
+                snprintf(error, error_size, "%s", input_gamepad_error(ctx));
+            return -1;
+        }
+        ctx->active_mode = INMODE_GAMEPAD;
+    } else {
+        apply_keysyms(&s->input);
+    }
+    if (error && error_size) error[0] = 0;
+    return 0;
+}
+
 void input_dispatch(input_ctx_t *ctx, const settings_t *s, const wupstream_input_t *in) {
     const input_cfg_t *ic = &s->input;
     /* keymap may have been edited in the UI: reload cheaply each call? no —
@@ -661,7 +734,7 @@ void input_dispatch(input_ctx_t *ctx, const settings_t *s, const wupstream_input
     double gyro[3];
     gyro_dps(ctx, in, gyro);
 
-    if (ic->mode == INMODE_GAMEPAD) {
+    if (ctx->active_mode == INMODE_GAMEPAD) {
         int changed = 0;
         /* buttons */
         uint32_t diff = buttons ^ ctx->prev_buttons;

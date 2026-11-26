@@ -85,7 +85,12 @@ a framebuffer for the desktop resolution.
 `wupstream_input()` parses the 128-byte report (buttons, sticks with per-pad
 rest calibration, touch coordinates calibrated to 854x480, volume slider,
 battery, IMU). `input_dispatch()` maps it into the session's X display via
-XTest (kb/mouse mode, the default) or a `/dev/uinput` virtual gamepad.
+XTest (Desktop mode, the default) or a `/dev/uinput` virtual gamepad. A live
+mode change releases every held key/button, centers all virtual axes, destroys
+or creates the uinput device, and leaves capture, video, audio, XFCE, and the
+network session running. If uinput creation fails, the effective mode remains
+Desktop even when the persisted request was Gamepad. Touch-as-mouse and
+gyro-as-mouse remain independent pointer features in both modes.
 On disconnect, `input_release_held()` releases every pressed key/button.
 
 ## Audio path

@@ -28,6 +28,7 @@ gles = dependency('glesv2')
 threads = dependency('threads')
 m_dep = meson.get_compiler('c').find_library('m', required: true)
 gtk3 = dependency('gtk+-3.0', required: get_option('settings_app'))
+sdl2 = dependency('sdl2', required: false)
 
 # libwupstream (WUP Stream protocol + patched x264), pinned upstream source
 # built inside the Meson build directory. See docs/UPSTREAM.md.
@@ -103,3 +104,15 @@ test('encoded-cursor', py, args: [files('tests/test_encoded_cursor.py')],
 test('capture-xvfb', find_program('sh'),
   args: [files('tests/run_capture_test.sh')],
   depends: cap_test, timeout: 60)
+
+if sdl2.found()
+  gamepad_test = executable('wup-gamepad-test',
+    'tests/input_gamepad_test.c',
+    'src/settings.c', 'src/x11util.c', 'src/input.c',
+    wup_dep[1],
+    include_directories: [include_directories('src')],
+    dependencies: [glib, json_glib, x11, xrandr, xtst, xext, xinerama,
+                   sdl2, m_dep],
+    build_by_default: false)
+  test('gamepad-evdev-sdl', gamepad_test, depends: gamepad_test, timeout: 20)
+endif

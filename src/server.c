@@ -47,6 +47,9 @@ struct server_t {
     pthread_mutex_t mtx;
     wupstream_input_t last_in;
     int has_in;
+    int active_input_mode;
+    int gamepad_available;
+    char input_status[160];
 };
 
 static void set_status(server_t *srv, const char *fmt, ...) {
@@ -257,12 +260,23 @@ static void *server_thread(void *arg) {
             have_aout = 1;
         if (s->audio_pad_to_pc && !s->gamepad_only && audio_in_start(&ain) == 0)
             have_ain = 1;
-        ictx = input_init(s);
-        if (ictx && s->input.mode == INMODE_GAMEPAD && !input_gamepad_ok(ictx))
-            set_status(srv, "GamePad: /dev/uinput unavailable, using kb/mouse mode");
-
         srv->state = SRV_STREAMING;
-        set_status(srv, "streaming");
+        ictx = input_init(s);
+        pthread_mutex_lock(&srv->mtx);
+        srv->active_input_mode = input_active_mode(ictx);
+        if (input_gamepad_ok(ictx))
+            srv->gamepad_available = 1;
+        else if (s->input.mode == INMODE_GAMEPAD)
+            srv->gamepad_available = 0;
+        if (s->input.mode == INMODE_GAMEPAD && !input_gamepad_ok(ictx))
+            snprintf(srv->input_status, sizeof srv->input_status,
+                     "Gamepad mode unavailable: %.100s; Desktop fallback active",
+                     input_gamepad_error(ictx));
+        else
+            snprintf(srv->input_status, sizeof srv->input_status, "%s mode active",
+                     srv->active_input_mode == INMODE_GAMEPAD ? "Gamepad" : "Desktop");
+        snprintf(srv->status, sizeof srv->status, "streaming - %s", srv->input_status);
+        pthread_mutex_unlock(&srv->mtx);
 
         double audio_acc = 0, audio_last_t = 0;
         int frame_count = 0;
@@ -312,7 +326,24 @@ static void *server_thread(void *arg) {
                 if (cap_ok && async_enabled)
                     cap_async = capture_async_start(&cap);
             }
-            if (rlk && ictx) input_reload_keys(ictx, s);
+            if (rlk && ictx) {
+                char mode_error[160];
+                int mode_ok = input_set_mode(ictx, s, mode_error, sizeof mode_error);
+                pthread_mutex_lock(&srv->mtx);
+                srv->active_input_mode = input_active_mode(ictx);
+                if (input_gamepad_ok(ictx))
+                    srv->gamepad_available = 1;
+                else if (s->input.mode == INMODE_GAMEPAD)
+                    srv->gamepad_available = 0;
+                if (mode_ok != 0)
+                    snprintf(srv->input_status, sizeof srv->input_status,
+                             "Gamepad mode unavailable: %.100s; Desktop fallback active", mode_error);
+                else
+                    snprintf(srv->input_status, sizeof srv->input_status, "%s mode active",
+                             srv->active_input_mode == INMODE_GAMEPAD ? "Gamepad" : "Desktop");
+                snprintf(srv->status, sizeof srv->status, "streaming - %s", srv->input_status);
+                pthread_mutex_unlock(&srv->mtx);
+            }
             if (cg && ictx) { input_calib_start(ictx); set_status(srv, "gyro calibration: keep the pad flat and still..."); }
 
             /* Main thread only reads borrowed frames from the capture worker.
@@ -582,6 +613,15 @@ server_t *server_new(settings_t *s) {
     memcpy(srv->last_ui_gyro_bias, s->input.gyro_bias,
            sizeof srv->last_ui_gyro_bias);
     srv->settings_generation = 1;
+    srv->active_input_mode = INMODE_KBMOUSE;
+    char gamepad_error[160];
+    srv->gamepad_available = input_probe_gamepad(gamepad_error, sizeof gamepad_error) == 0;
+    if (srv->gamepad_available)
+        snprintf(srv->input_status, sizeof srv->input_status,
+                 "Desktop mode idle; Gamepad mode available");
+    else
+        snprintf(srv->input_status, sizeof srv->input_status,
+                 "Desktop mode idle; Gamepad mode unavailable: %.96s", gamepad_error);
     srv->running = 1;
     pthread_create(&srv->th, NULL, server_thread, srv);
     return srv;
@@ -630,6 +670,17 @@ int server_input_snapshot(server_t *srv, wupstream_input_t *out) {
     if (ok) *out = srv->last_in;
     pthread_mutex_unlock(&srv->mtx);
     return ok;
+}
+
+void server_input_mode_snapshot(server_t *srv, int *mode, int *gamepad_available,
+                                char *status, size_t status_size) {
+    if (!srv) return;
+    pthread_mutex_lock(&srv->mtx);
+    if (mode) *mode = srv->active_input_mode;
+    if (gamepad_available) *gamepad_available = srv->gamepad_available;
+    if (status && status_size)
+        snprintf(status, status_size, "%s", srv->input_status);
+    pthread_mutex_unlock(&srv->mtx);
 }
 
 const char *server_status(server_t *srv) {

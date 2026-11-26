@@ -36,7 +36,12 @@ protocol.
 Every reply contains `ok`. Failed replies contain `error`; successful mutating
 replies contain `message`. State contains the connection state and, while a
 client is connected, the latest buttons, sticks, touch, volume, and battery
-report.
+report. It also always contains `input_mode` (the effective server-side mode,
+not merely the configured preference), `gamepad_available`, and a human-readable
+`input_status`. The `input.mode` member accepted by `validate_input` and
+`apply_input` selects Desktop (`1`) or Gamepad (`0`). A Desktop→Gamepad apply
+first proves that a uinput device can be created; failure rejects the update
+without changing the valid settings file.
 
 ## Live update sequence
 
@@ -44,8 +49,9 @@ The daemon parses into a private configuration copy, validates it, and writes
 it with a same-directory temporary file plus `fsync` and `rename`. Only after
 that succeeds does it publish a complete settings snapshot to the streaming
 thread. The streaming thread releases held key chords, modifiers, stick keys,
-mouse buttons, and touch drags using the old mapping, clears its edge state,
-parses the new mapping, and continues the existing session.
+mouse buttons, virtual gamepad buttons/axes, and touch drags using the old
+mapping, clears its edge state, changes input mode when requested, parses the
+new mapping, and continues the existing session.
 
 The IPC loop runs in the daemon's main thread. File writes and JSON parsing do
 not run in the capture/encode thread.

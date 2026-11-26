@@ -7,6 +7,8 @@ Meson's `-Dsettings_app=disabled` option for daemon-only builds.
 ## Implemented
 
 - Complete GamePad button list with HOME clearly reserved for ThinClient.
+- Live Desktop/Gamepad mode selector with the effective daemon mode, uinput
+  availability, and fallback reason reported by the daemon.
 - Disabled, key/shortcut capture, mouse buttons, wheel actions, safe desktop
   shortcuts, function keys, and the Onboard toggle.
 - Independent left/right stick modes, directional keys, deadzone,

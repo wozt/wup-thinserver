@@ -19,13 +19,19 @@ meson test -C build                     # unit tests (see tests/)
   aspect geometry (letterbox/crop/stretch math extracted for the test).
 - `tests/test_control.py` — isolated Xvfb daemon, socket permissions, live
   get/apply/restore, atomic persistence, and rejection of invalid keys and
-  arbitrary IPC commands.
+  arbitrary IPC commands; input-mode state, availability, preflight, and
+  persistence are exercised without weakening socket isolation.
 - `tests/capture_test.c` — real Xvfb capture through both MIT-SHM and XCB
   GetImage; defines a cursor with a non-zero hotspot and verifies its pixels,
   scaled position and size in the final 854×480 BGRA frame.
 - `tests/test_encoded_cursor.py` — runs the real daemon and a minimal fake
   GamePad twice, reconstructs a complete WUP `V` frame, and verifies that
   enabling the cursor changes the encoded video payload.
+- `tests/input_gamepad_test.c` — creates the real uinput controller, opens its
+  evdev node, verifies SDL enumeration and stable identity, checks all 18
+  Nintendo-position button mappings and a stick axis, then verifies held
+  button release, axis centering, live Desktop/Gamepad transitions, and device
+  cleanup. It skips with exit 77 when `/dev/uinput` is unavailable.
 
 For a visual smoke test inside the container:
 

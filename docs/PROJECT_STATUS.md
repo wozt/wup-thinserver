@@ -126,6 +126,18 @@ performance measurement, native install, Raspberry Pi).
       reaches the encoded WUP video payload; cursor visibility defaults on.
 - [ ] **Pending physical validation:** pointer shape, hotspot and movement in
       the actual encoded GamePad output.
+- [x] **Implemented / automatically tested on the host:** live Desktop and
+      Gamepad modes. The uinput device has stable identity, four centered
+      axes, all 18 controls with Nintendo-position face-button mapping, and is
+      detected through both evdev and SDL. Applying a mode releases held
+      inputs and centers axes without restarting the stream.
+- [x] **Implemented / automatically tested:** Settings and the protected IPC
+      expose the configured mode, effective mode, verified availability, and
+      useful uinput failure status. A failed Gamepad preflight leaves Desktop
+      mode and the last valid settings intact.
+- [ ] **Pending Docker integration and physical validation:** controlled
+      `/dev/uinput` plus dynamic evdev visibility without privileged mode;
+      live HOME+X switching on the real client.
 
 ## Known issues / risks
 

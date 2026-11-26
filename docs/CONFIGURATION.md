@@ -45,7 +45,7 @@ valid file unchanged.
 
 | Key | Meaning |
 |---|---|
-| `mode` | `0` = virtual evdev gamepad (`/dev/uinput`), `1` = XTest keyboard/mouse (**default**, required for Onboard typing) |
+| `mode` | `0` = virtual evdev Gamepad (`/dev/uinput`), `1` = XTest Desktop keyboard/mouse (**default**, required for Onboard typing). Settings applies this live. |
 | `deadzone` | Stick deadzone in raw units (default 120, max ~±1100) |
 | `sensitivity` | Pointer/stick speed percent |
 | `invert_y` | Invert stick Y |
@@ -91,6 +91,28 @@ it cannot create arbitrary shell commands. Existing advanced commands remain
 available through deliberate JSON editing on this trusted local session.
 
 All of it is configuration — nothing is hard-coded.
+
+### Virtual controller mapping
+
+Gamepad mode creates `WUP ThinServer Gamepad` with four signed evdev axes
+(`ABS_X`, `ABS_Y`, `ABS_RX`, `ABS_RY`, range −32767…32767) and the following
+buttons. The face buttons follow their physical Nintendo positions:
+
+| GamePad control | Linux evdev code |
+|---|---|
+| A / B / X / Y | `BTN_EAST` / `BTN_SOUTH` / `BTN_NORTH` / `BTN_WEST` |
+| L / R | `BTN_TL` / `BTN_TR` |
+| ZL / ZR | `BTN_TL2` / `BTN_TR2` |
+| L3 / R3 | `BTN_THUMBL` / `BTN_THUMBR` |
+| Plus / Minus / HOME | `BTN_START` / `BTN_SELECT` / `BTN_MODE` |
+| TV | `BTN_TRIGGER_HAPPY1` |
+| D-pad | `BTN_DPAD_LEFT`, `BTN_DPAD_RIGHT`, `BTN_DPAD_UP`, `BTN_DPAD_DOWN` |
+
+Desktop key, command, mouse-button, and stick bindings are suppressed while
+Gamepad mode is effective. Touch-as-mouse and gyro-as-mouse are separately
+configurable and can remain enabled. When uinput creation fails, ThinServer
+reports the reason and keeps Desktop mode effective instead of leaving input
+partially active.
 
 ## Environment overrides (libwupstream)
 
