@@ -22,6 +22,8 @@ valid file unchanged.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `pad_ip` | string | `""` | GamePad IP. Empty = accept the first pad announcing itself. Set it to pin one client. |
+| `listen_port` | int | `50001` | UDP port the daemon binds for `B` beacons (LAN broadcast and direct unicast endpoints). 1–65535. |
+| `listen_address` | string | `""` | Numeric IPv4 address to bind the beacon socket to; empty = all interfaces. Restrict it (e.g. the LAN address) to limit exposure. Hostnames are not accepted — resolve to an IPv4 literal. |
 | `source_type` | int | `0` | `0` screen (whole display), `1` window, `2` region. ThinServer uses `0`. |
 | `aspect` | int | `1` | `0` stretch, `1` letterbox, `2` crop — how the desktop maps into 854x480. |
 | `capture_backend` | int | `0` | `0` XCB MIT-SHM, `1` XCB GetImage, `2` KMS CPU, `3` KMS EGL. Xvfb → `0` or `1`. |

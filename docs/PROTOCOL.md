@@ -6,14 +6,21 @@ receiver (`wup-thinclient`, derived from `wup-stream/pad`). No RTP/RTSP/VNC/
 RDP is used.
 
 All integers little-endian. The GamePad side binds UDP **50000**; discovery
-uses UDP **50001** broadcast.
+uses UDP **50001** by default (configurable via `listen_port`).
 
 ## Session establishment
 
 1. Client (idle) broadcasts `B 0x01 0x00 0x00` to `255.255.255.255:50001`
-   every second.
-2. Daemon (`wupstream_open`) listens on 50001 (SO_REUSEADDR/REUSEPORT) for a
-   `B` packet, or connects directly to `pad_ip:50000` when configured.
+   every second — or, for a configured direct endpoint (hostname/IPv4 +
+   port), unicasts `B` to `host:port` instead.
+2. Daemon (`wupstream_open_port`) listens on `listen_port`
+   (SO_REUSEADDR/REUSEPORT, optionally bound to `listen_address`) for a
+   `B` packet — broadcast or unicast — or connects directly to
+   `pad_ip:50000` when configured.
+3. The daemon records the beacon's **source port** (not assumed to be
+   50000) and keeps it updated from session packets, so `H`/media replies
+   reach clients behind NAT or using ephemeral source ports. Direct
+   clients need no inbound port forwarding on cone-type NAT.
 3. Daemon sends `H` hellos every 250 ms: `'H' ver flags mic light mode`.
    `flags` bit0 = request microphone; `light` = backlight level 1..6
    (bit6 = off, bit7 = keep); `mode` (5th byte, WUP_THIN_PROTOCOL
