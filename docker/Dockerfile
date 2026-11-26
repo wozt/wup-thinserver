@@ -76,6 +76,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         locales keyboard-configuration \
         fonts-dejavu fonts-liberation fonts-noto-core \
         python3 python3-gi gir1.2-gtk-3.0 libglib2.0-bin \
+        libsdl2-2.0-0 \
         polkitd pkexec \
         sudo \
     && rm -rf /var/lib/apt/lists/*\
@@ -94,9 +95,11 @@ COPY scripts/onboard-setup.sh /usr/local/bin/onboard-setup
 COPY scripts/install-desktop-shortcut.sh /usr/local/bin/wup-install-desktop-shortcut
 COPY scripts/migrate-settings.py /usr/local/bin/wup-migrate-settings
 COPY scripts/wup-set-password.sh /usr/local/bin/wup-set-password
+COPY scripts/gamepad-devd.sh /usr/local/bin/wup-gamepad-devd
 RUN chmod 755 /usr/local/bin/onboard-toggle /usr/local/bin/onboard-setup \
         /usr/local/bin/wup-install-desktop-shortcut \
-        /usr/local/bin/wup-migrate-settings /usr/local/bin/wup-set-password
+        /usr/local/bin/wup-migrate-settings /usr/local/bin/wup-set-password \
+        /usr/local/bin/wup-gamepad-devd
 
 # Entrypoint: starts as root for account provisioning, then drops to the
 # unprivileged `wup` user via setpriv for the whole desktop session.

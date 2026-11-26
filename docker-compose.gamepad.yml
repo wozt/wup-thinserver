@@ -1,0 +1,40 @@
+# WUP ThinServer — optional GamePad mode overlay.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gamepad.yml up -d --build
+#
+# What it does (nothing here runs unless this file is added):
+#   * bind-mounts the host's /dev/uinput into the container so the daemon
+#     can create the "WUP ThinServer Gamepad" virtual controller;
+#   * allows the input char-device range (major 13) so the dynamically
+#     created evdev node can be opened by SDL/evdev applications;
+#   * points the daemon at a privately mknod'd node (/dev/uinput-wup) so
+#     the host's own /dev/uinput permissions are never modified.
+#
+# What it does NOT do:
+#   * no privileged mode, no host /dev/input mount: physical host keyboards,
+#     mice and controllers stay invisible inside the container. Only the
+#     single virtual device node created at runtime is reachable.
+#   * the virtual controller lives in the SHARED host kernel: it is also
+#     visible to SDL/evdev applications running on the host itself. Docker
+#     isolates the device NODES, not the kernel input subsystem — this is
+#     a documented limitation, not full input isolation.
+#
+# Hosts without /dev/uinput (or without the `uinput` kernel module) keep
+# working: Desktop mode is unaffected and Gamepad mode reports the
+# probe error in Settings. To disable even with this file loaded, set
+# WUP_GAMEPAD=0 in the environment.
+
+services:
+  wup-thinserver:
+    devices:
+      - /dev/uinput
+    device_cgroup_rules:
+      # evdev event nodes are created dynamically (major 13 = input).
+      # Only nodes that exist under the container's private /dev can be
+      # opened; host input devices are not mounted.
+      - "c 13:* rmw"
+    environment:
+      # entrypoint mknods this alias so host /dev/uinput perms stay intact
+      WUP_UINPUT_PATH: /dev/uinput-wup
+      # 1 = run the evdev node watcher (default when /dev/uinput exists)
+      WUP_GAMEPAD: ${WUP_GAMEPAD:-1}

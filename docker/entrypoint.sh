@@ -43,6 +43,23 @@ if [ "$(id -u)" = "0" ]; then
         chmod 440 /etc/sudoers.d/90-wup-nopasswd
         echo "[wup-thin] passwordless sudo enabled inside the container"
     fi
+    # Virtual gamepad support (docker-compose.gamepad.yml): /dev/uinput is
+    # bind-mounted; give the daemon a privately mknod'd node so the host's
+    # device permissions stay untouched, and start the evdev node watcher.
+    if [ -e /dev/uinput ] && [ "${WUP_GAMEPAD:-1}" != "0" ]; then
+        # ls -l prints the device numbers as "major, minor" across fields 5-6
+        read -r _uimaj _uimin <<<"$(ls -ln /dev/uinput | awk '{gsub(",","",$5); print $5, $6}')"
+        if [ -n "${_uimaj:-}" ] && [ -n "${_uimin:-}" ]; then
+            mknod /dev/uinput-wup c "$_uimaj" "$_uimin" 2>/dev/null || true
+            chown wup:wup /dev/uinput-wup 2>/dev/null || true
+            chmod 0660 /dev/uinput-wup 2>/dev/null || true
+            if [ -x /usr/local/bin/wup-gamepad-devd ]; then
+                setsid /usr/local/bin/wup-gamepad-devd </dev/null >>/tmp/gamepad-devd.log 2>&1 &
+                echo "[wup-thin] gamepad support: /dev/uinput-wup + evdev watcher"
+            fi
+        fi
+        unset _uimaj _uimin
+    fi
     exec setpriv --reuid=wup --regid=wup --init-groups -- \
         /usr/local/bin/wup-thin-entrypoint --session "$@"
 fi

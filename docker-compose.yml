@@ -13,6 +13,11 @@
 #   To avoid clashes with a WUP Stream server on the same host, don't run
 #   both at once against the same GamePad (they share ports 50000/50001).
 #
+# Optional GamePad (uinput) support: add the overlay on hosts with
+# /dev/uinput —  docker compose -f docker-compose.yml \
+#                    -f docker-compose.gamepad.yml up -d --build
+# See docker-compose.gamepad.yml for what it does and does not isolate.
+#
 # Environment overrides (see docs/CONFIGURATION.md):
 #   DESKTOP_WIDTH / DESKTOP_HEIGHT  (854x480, 1066x600, 1280x720, 1920x1080)
 #   KEYBOARD_LAYOUT / KEYBOARD_VARIANT / LOCALE
