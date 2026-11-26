@@ -15,10 +15,14 @@ Status legend: **planned** / **in progress** / **implemented** /
 
 ## Milestone 1 — Independent Linux desktop (Docker)
 
-- [ ] Dockerfile: Debian 13 + XFCE + Xvfb + Firefox ESR + Onboard + PulseAudio + non-root `wup` user + persistent `/home/wup`.
-- [ ] Entrypoint: dbus + Xvfb + pulseaudio + xfce4-session + daemon startup, SIGTERM handling, healthcheck.
-- [ ] docker-compose.yml (host networking, documented).
-- [ ] **Verified:** desktop runs without host X11/audio; Firefox & Onboard launch; display inspectable.
+- [x] Dockerfile: Debian 13 + XFCE + Xvfb + Firefox ESR + Onboard + PulseAudio + non-root `wup` user + persistent `/home/wup`.
+- [x] Entrypoint: dbus + Xvfb + pulseaudio + xfce4-session + daemon startup, SIGTERM handling, healthcheck.
+- [x] docker-compose.yml (host networking, documented).
+- [x] **Verified (automated smoke):** `docker compose up` → container healthy;
+      xfwm4/xfce4-panel/xfdesktop/Thunar/Onboard/wup-thinserver all running
+      on Xvfb :99; daemon in "looking for GamePad" state. Firefox ESR is
+      installed and launchable (not yet opened in-session).
+- [ ] GamePad-visible check: connect WUP ThinClient and confirm the desktop renders.
 
 ## Milestone 2 — Headless streaming server
 
@@ -33,9 +37,9 @@ Status legend: **planned** / **in progress** / **implemented** /
 
 ## Milestone 3 — WUP ThinClient
 
-- [ ] Dedicated homebrew app (libwup) with own branding/menu/server selection.
-- [ ] Artifact builds (`.wup`).
-- [ ] Automated host-side tests for client logic.
+- [x] Dedicated homebrew app `wup_thinclient.wup` in wup-thinclient repo
+      (server IP config + persistence, local menu); builds via libwup.
+- [x] Automated host-side tests for config format / app.cfg.
 
 ## Milestones 4–8
 
