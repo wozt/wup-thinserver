@@ -87,7 +87,11 @@ static int uinput_fail(int fd, char *error, size_t error_size,
 }
 
 static int uinput_open(char *error, size_t error_size) {
-    int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+    /* WUP_UINPUT_PATH: containers may expose uinput under a differently
+       named node (e.g. a privately mknod'd /dev/uinput-wup) so the host's
+       device permissions stay untouched. Defaults to /dev/uinput. */
+    const char *path = getenv("WUP_UINPUT_PATH");
+    int fd = open(path && path[0] ? path : "/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (fd < 0) return uinput_fail(-1, error, error_size, "cannot open /dev/uinput");
 
     if (ioctl(fd, UI_SET_EVBIT, EV_SYN) != 0 ||

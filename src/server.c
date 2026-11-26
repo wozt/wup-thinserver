@@ -170,6 +170,63 @@ static int region_is_cleared(const settings_t *s) {
            (s->source.w <= 0 || s->source.h <= 0);
 }
 
+/* WUP_THIN_PROTOCOL 'T': the pad asked for a live Desktop/Gamepad switch.
+   The request carries an explicit mode (or 0xff = toggle the configured
+   one), so a duplicated datagram can never flip the mode twice. The ack
+   always reports the EFFECTIVE mode: a rejected Gamepad request leaves
+   Desktop active and the client must not claim otherwise. */
+static void pad_mode_request(server_t *srv, settings_t *s, input_ctx_t *ictx,
+                             wupstream *pad, int reqid, int reqmode) {
+    int want = reqmode;
+    if (want == 0xff)
+        want = s->input.mode == INMODE_GAMEPAD ? INMODE_KBMOUSE : INMODE_GAMEPAD;
+    if (want != INMODE_KBMOUSE && want != INMODE_GAMEPAD) {
+        wupstream_control_reply(pad, reqid, 2, ictx ? input_active_mode(ictx) : INMODE_KBMOUSE);
+        return;
+    }
+    int rejected = 0;
+    char mode_error[160] = "";
+    if (want != s->input.mode || (ictx && input_active_mode(ictx) != want)) {
+        if (want == INMODE_GAMEPAD) {
+            char probe[160];
+            if (input_probe_gamepad(probe, sizeof probe) != 0) {
+                rejected = 1;
+                snprintf(mode_error, sizeof mode_error, "%s", probe);
+            }
+        }
+        if (!rejected) {
+            s->input.mode = want;
+            if (input_set_mode(ictx, s, mode_error, sizeof mode_error) != 0)
+                rejected = 1;
+        }
+    }
+    int active = ictx ? input_active_mode(ictx) : INMODE_KBMOUSE;
+    pthread_mutex_lock(&srv->mtx);
+    /* The pad is authoritative for nothing: publish the requested mode as
+     * the configured one (so Settings/Apply cannot silently revert it) and
+     * the effective mode for display. staged picks it up via generation. */
+    srv->s->input.mode = s->input.mode;
+    srv->staged_settings.input.mode = s->input.mode;
+    srv->settings_generation++;
+    srv->active_input_mode = active;
+    if (input_gamepad_ok(ictx))
+        srv->gamepad_available = 1;
+    else if (want == INMODE_GAMEPAD)
+        srv->gamepad_available = 0;
+    if (rejected)
+        snprintf(srv->input_status, sizeof srv->input_status,
+                 "Gamepad mode unavailable: %.100s; Desktop fallback active", mode_error);
+    else
+        snprintf(srv->input_status, sizeof srv->input_status, "%s mode active",
+                 active == INMODE_GAMEPAD ? "Gamepad" : "Desktop");
+    snprintf(srv->status, sizeof srv->status, "streaming - %s", srv->input_status);
+    settings_t persist = srv->staged_settings;
+    pthread_mutex_unlock(&srv->mtx);
+    settings_save(&persist);
+    wupstream_set_input_mode(pad, active);
+    wupstream_control_reply(pad, reqid, rejected ? 1 : 0, active);
+}
+
 /* start capture with retries; returns 0 on success */
 static int capture_start_retry(capture_t *cap, const settings_t *s, server_t *srv) {
     for (int i = 0; i < SESSION_CAP_TRIES && srv->running && srv->want_stream; i++) {
@@ -277,6 +334,7 @@ static void *server_thread(void *arg) {
                      srv->active_input_mode == INMODE_GAMEPAD ? "Gamepad" : "Desktop");
         snprintf(srv->status, sizeof srv->status, "streaming - %s", srv->input_status);
         pthread_mutex_unlock(&srv->mtx);
+        wupstream_set_input_mode(pad, srv->active_input_mode);
 
         double audio_acc = 0, audio_last_t = 0;
         int frame_count = 0;
@@ -343,6 +401,7 @@ static void *server_thread(void *arg) {
                              srv->active_input_mode == INMODE_GAMEPAD ? "Gamepad" : "Desktop");
                 snprintf(srv->status, sizeof srv->status, "streaming - %s", srv->input_status);
                 pthread_mutex_unlock(&srv->mtx);
+                wupstream_set_input_mode(pad, srv->active_input_mode);
             }
             if (cg && ictx) { input_calib_start(ictx); set_status(srv, "gyro calibration: keep the pad flat and still..."); }
 
@@ -454,6 +513,12 @@ static void *server_thread(void *arg) {
 
             /* inputs */
             if (wupstream_input(pad, &in) != 0) { lost = 1; break; }
+            /* 'T' control requests are pumped by wupstream_input(): apply
+             * live mode changes before dispatching this frame's inputs so
+             * the new mapping takes effect immediately. */
+            int creqid = 0, creqmode = 0;
+            while (ictx && wupstream_take_control(pad, &creqid, &creqmode))
+                pad_mode_request(srv, s, ictx, pad, creqid, creqmode);
             pthread_mutex_lock(&srv->mtx);
             srv->last_in = in; srv->has_in = 1;
             /* Don't publish stale brightness while a new command is in flight. */

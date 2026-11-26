@@ -99,6 +99,93 @@ def extend_brightness_commands(source):
         code.write_text(text.replace(old, new, 1))
 
 
+def extend_control_packets(source):
+    """WUP_THIN_PROTOCOL: live input-mode control between pad and daemon.
+
+    pad -> server 'T' reqid mode 0     (4 bytes; mode: 0 gamepad, 1 desktop,
+                                        255 toggle; reqid echoes in the ack)
+    server -> pad 'T' reqid status mode (status: 0 applied, 1 rejected,
+                                        2 invalid; mode: effective mode)
+    server -> pad 'H' is extended to 5 bytes: byte 4 is the daemon's current
+    effective input mode (0/1, 255 unknown until the input context exists).
+    Older peers ignore both extensions: unknown tags are dropped and the
+    5th hello byte is never read by clients that only parse 4 bytes.
+    """
+    header = source / "host/wupstream.h"
+    code = source / "host/wupstream.c"
+
+    decl_anchor = "int wupstream_input(wupstream *w, wupstream_input_t *in);"
+    decls = decl_anchor + """
+void wupstream_set_input_mode(wupstream *w, int mode);   /* effective mode in every 'H' (0/1, 255 unknown) */
+int wupstream_take_control(wupstream *w, int *reqid, int *mode);  /* 1: a 'T' request is pending */
+void wupstream_control_reply(wupstream *w, int reqid, int status, int mode);"""
+    text = header.read_text()
+    if decls not in text:
+        if text.count(decl_anchor) != 1:
+            raise RuntimeError(f"Unexpected pinned header: {header}")
+        header.write_text(text.replace(decl_anchor, decls, 1))
+
+    # struct fields: pending 'T' request + the mode advertised in 'H'
+    field_anchor = "int16_t micbuf[48000]; int mic_w, mic_n;"
+    fields = field_anchor + "\n    int input_mode, ctrl_pending, ctrl_reqid, ctrl_mode;"
+    text = code.read_text()
+    if fields not in text:
+        if text.count(field_anchor) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(field_anchor, fields, 1)
+
+    # calloc zeroes everything; 0 would falsely mean "gamepad" in 'H' byte 4
+    open_anchor = "wupstream *w = calloc(1, sizeof *w);"
+    if open_anchor in text and "w->input_mode = 0xff;" not in text:
+        if text.count(open_anchor) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(open_anchor, open_anchor + "\n    w->input_mode = 0xff;", 1)
+
+    # 'T' intake inside pump(): last request wins (mode is explicit, so a
+    # duplicated packet can never toggle the mode twice)
+    intake_anchor = "        if (b[0] == 'I' && n == 136) {"
+    intake = ("        if (b[0] == 'T' && n >= 4) { w->ctrl_reqid = b[1];"
+              " w->ctrl_mode = b[2]; w->ctrl_pending = 1; }\n" + intake_anchor)
+    if intake not in text:
+        if text.count(intake_anchor) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(intake_anchor, intake, 1)
+
+    # hello: advertise the effective input mode as a 5th byte
+    hello_old = "char h[4] = { 'H', 1, (char)w->mic, (char)w->light }; put(w, h, 4);"
+    hello_new = ("char h[5] = { 'H', 1, (char)w->mic, (char)w->light,"
+                 " (char)w->input_mode }; put(w, h, 5);")
+    if hello_new not in text:
+        if text.count(hello_old) != 1:
+            raise RuntimeError(f"Unexpected pinned hello: {code}")
+        text = text.replace(hello_old, hello_new, 1)
+
+    # public API next to wupstream_close
+    api_anchor = "void wupstream_close(wupstream *w)"
+    api = """void wupstream_set_input_mode(wupstream *w, int mode) {
+    pthread_mutex_lock(&w->mu); w->input_mode = mode & 0xff; w->last_hello = 0; pthread_mutex_unlock(&w->mu);
+}
+int wupstream_take_control(wupstream *w, int *reqid, int *mode) {
+    pthread_mutex_lock(&w->mu);
+    int ok = w->ctrl_pending; w->ctrl_pending = 0;
+    if (ok) { *reqid = w->ctrl_reqid; *mode = w->ctrl_mode; }
+    pthread_mutex_unlock(&w->mu);
+    return ok;
+}
+void wupstream_control_reply(wupstream *w, int reqid, int status, int mode) {
+    uint8_t p[4] = { 'T', (uint8_t)reqid, (uint8_t)status, (uint8_t)mode };
+    pthread_mutex_lock(&w->mu); put(w, p, 4); pthread_mutex_unlock(&w->mu);
+}
+
+""" + api_anchor
+    if "wupstream_take_control(wupstream *w, int *reqid" not in text:
+        if text.count(api_anchor) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(api_anchor, api, 1)
+
+    code.write_text(text)
+
+
 def copy_atomic(src, target):
     tmp = target.with_name(target.name + ".tmp")
     shutil.copyfile(src, tmp)
@@ -115,6 +202,7 @@ def main(argv):
     prepare_source(source)
     extend_i420(source)
     extend_brightness_commands(source)
+    extend_control_packets(source)
     # The upstream build script already pins x264 and applies the DRH patch.
     run(["sh", "host/build.sh"], cwd=source)
     archive = source / "build" / "host" / "libwupstream.a"

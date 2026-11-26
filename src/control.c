@@ -280,6 +280,7 @@ static char *make_response(control_t *control, gboolean ok, const char *message,
         ADD_REPORT(buttons); ADD_REPORT(lx); ADD_REPORT(ly); ADD_REPORT(rx);
         ADD_REPORT(ry); ADD_REPORT(touched); ADD_REPORT(tx); ADD_REPORT(ty);
         ADD_REPORT(volume); ADD_REPORT(battery); ADD_REPORT(charging);
+        ADD_REPORT(backlight);
 #undef ADD_REPORT
     }
     json_builder_end_object(b);
@@ -331,6 +332,26 @@ static char *handle_request(control_t *control, const char *data, gssize length)
                 error ? error->message : "input object is required", FALSE);
             g_clear_error(&error); g_object_unref(parser); return reply;
         }
+    } else if (!strcmp(op, "set_pad_brightness")) {
+        /* WUP_THIN_PROTOCOL: the Settings slider moves the GamePad's own
+           backlight (1..6, or -1 = leave the pad's level alone). Unlike
+           apply_input this must NOT reload held inputs, so it bypasses
+           server_apply_input_keys and only republishes the snapshot. */
+        JsonNode *node = json_object_get_member(request, "level");
+        if (!node || !JSON_NODE_HOLDS_VALUE(node) ||
+            json_node_get_value_type(node) != G_TYPE_INT64) {
+            g_object_unref(parser);
+            return make_response(control, FALSE, "level must be an integer", FALSE);
+        }
+        int level = (int)json_node_get_int(node);
+        if (level < -1 || level > 6) {
+            g_object_unref(parser);
+            return make_response(control, FALSE,
+                "brightness level must be -1 (automatic) or 1..6", FALSE);
+        }
+        candidate.pad_brightness = level;
+        candidate.pad_brightness_revision =
+            control->settings->pad_brightness_revision + 1;
     } else {
         g_object_unref(parser);
         return make_response(control, FALSE, "unknown operation", FALSE);
@@ -360,9 +381,14 @@ static char *handle_request(control_t *control, const char *data, gssize length)
         g_clear_error(&error); g_object_unref(parser); return reply;
     }
     *control->settings = candidate;
-    server_apply_input_keys(control->server);
+    if (!strcmp(op, "set_pad_brightness"))
+        server_sync_settings(control->server);   /* no input reload: held buttons stay down */
+    else
+        server_apply_input_keys(control->server);
     char *reply = make_response(control, TRUE,
-        !strcmp(op, "restore_defaults") ? "defaults restored" : "input settings applied",
+        !strcmp(op, "restore_defaults") ? "defaults restored" :
+        !strcmp(op, "set_pad_brightness") ? "pad brightness updated" :
+        "input settings applied",
         TRUE);
     g_object_unref(parser);
     return reply;
