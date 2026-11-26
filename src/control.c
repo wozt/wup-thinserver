@@ -454,4 +454,3 @@ void control_stop(control_t *control) {
 const char *control_path(const control_t *control) {
     return control ? control->path : "";
 }
-

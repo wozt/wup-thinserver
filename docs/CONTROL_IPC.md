@@ -63,4 +63,3 @@ with socket.socket(socket.AF_UNIX) as sock:
     print(json.loads(sock.recv(65536)))
 PY
 ```
-
