@@ -78,6 +78,15 @@ class ConfigTest(unittest.TestCase):
                                   "source": {"w": 400, "h": 300}})
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_pad_brightness_range(self):
+        for bad in (-2, 0, 7, 100):
+            r = run_check(self.home, {"pad_brightness": bad})
+            self.assertEqual(r.returncode, 2, (bad, r.stdout, r.stderr))
+            self.assertIn("pad_brightness", r.stderr)
+        for good in (-1, 1, 6):
+            r = run_check(self.home, {"pad_brightness": good})
+            self.assertEqual(r.returncode, 0, (good, r.stderr))
+
     def test_commands_and_mouse_buttons_accepted(self):
         r = run_check(self.home, {"input": {
             "commands": [""] * 17 + ["onboard-toggle"],

@@ -155,7 +155,6 @@ settings_t *settings_load(void) {
     s->kbps = json_int(root, "kbps", s->kbps);
     s->gop = 0; /* Ignore old saved values. */
     s->pad_brightness = json_int(root, "pad_brightness", -1);
-    if (s->pad_brightness < 1 || s->pad_brightness > 6) s->pad_brightness = -1;
     s->audio_pc_to_pad = json_int(root, "audio_pc_to_pad", s->audio_pc_to_pad);
     s->audio_pad_to_pc = json_int(root, "audio_pad_to_pc", s->audio_pad_to_pc);
     s->pad_volume_controls_pc = json_int(root, "pad_volume_controls_pc", s->pad_volume_controls_pc);

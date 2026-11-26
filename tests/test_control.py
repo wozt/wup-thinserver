@@ -130,6 +130,22 @@ class ControlTest(unittest.TestCase):
         self.assertFalse(response["ok"])
         self.assertIn("built-in commands", response["error"])
 
+    def test_pad_brightness_op(self):
+        config = self.request({"op": "get"})["config"]
+        self.assertIn("pad_brightness", config)
+        before = self.config_path.read_bytes()
+        for bad in (-2, 0, 7):
+            response = self.request({"op": "set_pad_brightness", "level": bad})
+            self.assertFalse(response["ok"], (bad, response))
+        self.assertEqual(self.config_path.read_bytes(), before)
+        for good in (1, 4, 6, -1):
+            response = self.request({"op": "set_pad_brightness", "level": good})
+            self.assertTrue(response["ok"], (good, response))
+            saved = json.loads(self.config_path.read_text())
+            self.assertEqual(saved["pad_brightness"], good)
+            self.assertEqual(
+                self.request({"op": "get"})["config"]["pad_brightness"], good)
+
     def test_restore_defaults(self):
         response = self.request({"op": "restore_defaults"})
         self.assertTrue(response["ok"])

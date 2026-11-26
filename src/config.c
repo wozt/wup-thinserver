@@ -25,6 +25,8 @@ const char *config_validate(const settings_t *s) {
         return "input.gyro_mode must be 0 (off), 1 (mouse) or 2 (stick)";
     if (s->input.gyro_sens < 1 || s->input.gyro_sens > 400)
         return "input.gyro_sens must be between 1 and 400";
+    if (s->pad_brightness != -1 && (s->pad_brightness < 1 || s->pad_brightness > 6))
+        return "pad_brightness must be -1 (automatic) or 1..6";
     if (s->source_type == SRC_REGION &&
         (s->source.w <= 0 || s->source.h <= 0))
         return "region source needs a positive width and height";

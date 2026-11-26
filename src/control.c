@@ -253,6 +253,8 @@ static char *make_response(control_t *control, gboolean ok, const char *message,
         json_builder_add_int_value(b, control->settings->audio_pad_to_pc);
         json_builder_set_member_name(b, "pad_volume_controls_pc");
         json_builder_add_int_value(b, control->settings->pad_volume_controls_pc);
+        json_builder_set_member_name(b, "pad_brightness");
+        json_builder_add_int_value(b, control->settings->pad_brightness);
         json_builder_end_object(b);
     }
     json_builder_set_member_name(b, "state"); json_builder_begin_object(b);
