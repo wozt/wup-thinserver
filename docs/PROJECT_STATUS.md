@@ -1,6 +1,6 @@
 # Project status
 
-Updated: 2026-11-26 (input usability and gaming milestone)
+Updated: 2026-11-26 (settings layout correction + direct connections)
 
 Status legend: **planned** / **in progress** / **implemented** /
 **tested automatically** / **validated on physical hardware** / **known issue**
@@ -149,6 +149,30 @@ performance measurement, native install, Raspberry Pi).
 - [ ] **Pending Docker in-container validation and physical retest:** SDL/
       evdev detection inside the gamepad container; live HOME+X switching
       and HOME shortcuts on the real client.
+
+## Settings layout correction and direct connections
+
+- [x] **Implemented / screenshot-verified in-container:** single-page
+      dashboard reorganized into vertical rows — compact input-mode strip,
+      full-width bindings (two nine-button groups share the row via a
+      GtkFlowBox size-allocate handler), three horizontally wrapped
+      secondary sections, compact live-monitor strip, fixed footer.
+      Directional-key rows only appear for keyboard-direction stick modes.
+      Window = `_NET_WORKAREA` at 1280x720 / 1066x600 / 854x480; taskbar
+      preserved; font unchanged. Fixed a GTK callback-signature crash on
+      config load.
+- [x] **Implemented / automatically tested:** `listen_port` (1–65535,
+      default 50001) and `listen_address` (numeric IPv4 or empty)
+      settings with validation tests; libwupstream patch
+      `extend_direct_connections` adds `wupstream_open_port()` and records
+      the beacon's real source port (kept updated from session packets).
+- [x] **Verified live in Docker:** unicast `B` to `host:50001` and
+      `host:5080` (custom `listen_port`) both produced `H` replies sent to
+      the sender's arbitrary source port — the mechanism direct/WAN
+      clients rely on (cone NAT, no inbound forwarding).
+- [ ] **Pending:** connection profile manager and alphanumeric hostname
+      keyboard on the client (endpoint host/port already configurable via
+      `thinclient.cfg`); secure WAN transport; physical GamePad retest.
 
 ## Known issues / risks
 
