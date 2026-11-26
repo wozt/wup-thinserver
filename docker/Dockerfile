@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         libglib2.0-dev libx11-dev libxrandr-dev libxtst-dev libxext-dev \
         libxinerama-dev libxcb1-dev libxcb-shm0-dev libx11-xcb-dev \
-        libpulse-dev libcairo2-dev libpangocairo-1.0-0 libjson-glib-dev \
+        libpulse-dev libcairo2-dev libpango1.0-dev libjson-glib-dev \
         libswscale-dev libdrm-dev libgbm-dev libegl-dev libgles-dev \
         nasm \
     && rm -rf /var/lib/apt/lists/*
@@ -68,12 +68,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         thunar xfce4-terminal mousepad \
         firefox-esr \
         onboard \
+        at-spi2-core gsettings-desktop-schemas gir1.2-atspi-2.0 \
         xdg-utils \
-        setxkbmap xkb-data \
+        x11-xkb-utils xkb-data \
         locales keyboard-configuration \
         fonts-dejavu fonts-liberation fonts-noto-core \
         python3 python3-gi gir1.2-gtk-3.0 \
-        policykit-1 \
+        polkitd pkexec \
         sudo \
     && rm -rf /var/lib/apt/lists/*\
     && sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen \

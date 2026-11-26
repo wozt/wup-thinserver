@@ -105,9 +105,11 @@ if [ ! -f "$WUP_THIN_CONFIG" ]; then
     cp /etc/wup-thinserver/settings.json "$WUP_THIN_CONFIG" 2>/dev/null || true
 fi
 wup-thinserver --config "$WUP_THIN_CONFIG" &
-PIDS="$PIDS $!"
+DAEMON_PID=$!
+PIDS="$PIDS $DAEMON_PID"
 log "wup-thinserver started (config $WUP_THIN_CONFIG)"
 
-# Wait for any child to exit, then clean up.
-wait -n $PIDS 2>/dev/null || wait $PIDS
+# The streaming daemon is the supervised process: desktop helpers may exit
+# and be restarted independently, but if the daemon exits the session ends.
+wait "$DAEMON_PID" 2>/dev/null
 cleanup
