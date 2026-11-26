@@ -7,6 +7,8 @@ const char *config_validate(const settings_t *s) {
         return "source_type must be 0 (screen), 1 (window) or 2 (region)";
     if (s->capture_backend < 0 || s->capture_backend > 3)
         return "capture_backend must be 0 (MIT-SHM), 1 (XCB GetImage), 2 (KMS CPU) or 3 (KMS EGL)";
+    if (s->cursor_visible != 0 && s->cursor_visible != 1)
+        return "cursor_visible must be 0 or 1";
     if (s->crf < 0 || s->crf > 51)
         return "crf must be between 0 and 51";
     if (s->kbps < 0 || s->kbps > 50000)

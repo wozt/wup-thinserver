@@ -6,7 +6,7 @@ Requirements (Debian 13 shown):
 
 ```sh
 sudo apt install meson ninja-build pkg-config \
-  libglib2.0-dev libx11-dev libxrandr-dev libxtst-dev libxext-dev \
+  libglib2.0-dev libx11-dev libxrandr-dev libxtst-dev libxext-dev libxfixes-dev \
   libxinerama-dev libxcb1-dev libxcb-shm0-dev libx11-xcb-dev \
   libpulse-dev libcairo2-dev libpango1.0-dev libjson-glib-dev libgtk-3-dev \
   libswscale-dev libdrm-dev libgbm-dev libegl-dev libgles-dev \

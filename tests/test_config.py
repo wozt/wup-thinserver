@@ -49,6 +49,11 @@ class ConfigTest(unittest.TestCase):
         r = run_check(self.home, {"capture_backend": 9})
         self.assertEqual(r.returncode, 2)
 
+    def test_invalid_cursor_visibility(self):
+        r = run_check(self.home, {"cursor_visible": 2})
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("cursor_visible", r.stderr)
+
     def test_invalid_crf(self):
         self.assertEqual(run_check(self.home, {"crf": 99}).returncode, 2)
         self.assertEqual(run_check(self.home, {"crf": -1}).returncode, 2)

@@ -1,6 +1,6 @@
 # Project status
 
-Updated: 2026-11-26 (live settings milestone)
+Updated: 2026-11-26 (input usability and gaming milestone)
 
 Status legend: **planned** / **in progress** / **implemented** /
 **tested automatically** / **validated on physical hardware** / **known issue**
@@ -116,6 +116,16 @@ performance measurement, native install, Raspberry Pi).
       with `.pre-desktop-migration.bak` backup, no volume reset.
 - [ ] Physical retest: Onboard auto-show on text fields, X toggling,
       new stick/mouse bindings, manual connect flow.
+
+## Input usability and gaming support
+
+- [x] **Implemented / automatically tested:** XFixes cursor capture and
+      premultiplied-alpha composition after server-side scaling. Both XCB
+      MIT-SHM and GetImage are tested with a non-zero hotspot at 1280×720 →
+      854×480; a fake-GamePad integration test verifies that the cursor
+      reaches the encoded WUP video payload; cursor visibility defaults on.
+- [ ] **Pending physical validation:** pointer shape, hotspot and movement in
+      the actual encoded GamePad output.
 
 ## Known issues / risks
 

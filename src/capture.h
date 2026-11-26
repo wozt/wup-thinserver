@@ -23,6 +23,8 @@ typedef struct {
     size_t shm_size;
     int use_shm;
     int capture_backend;
+    int cursor_visible;
+    int cursor_available;
     wup_kms_t *kms;
     /* scaler */
     struct SwsContext *sws;

@@ -25,8 +25,10 @@ Copied verbatim from `wup-stream-server-linux/src/` unless noted:
   `input.mouse_buttons[]` (X11 button per press/release).
 - `server.c/h` — **modified**: complete settings snapshots and explicit live
   key reload requests are used by the local configuration interface.
-- `capture.c/h`, `capture_async.c/h`, `capture_kms.c/h`, `kms_wire.h` —
-  unmodified X11/KMS capture + scaling.
+- `capture.c/h` — **modified**: XFixes obtains the active cursor shape,
+  position and hotspot; a bounded post-scale compositor adds it to X11 and
+  KMS CPU frames before encoding. `capture_async.c/h`, `capture_kms.c/h` and
+  `kms_wire.h` retain the imported capture/scaling behavior.
 - `audio.c/h` — unmodified PulseAudio capture/playback.
 - `input.c/h` — **modified**: `kb_buttons()` honours `commands[]` (press
   edge, `/bin/sh -c`, detached) and `mouse_buttons[]` (XTest button edges)

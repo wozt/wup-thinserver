@@ -48,6 +48,7 @@ void settings_defaults(settings_t *s) {
     s->source_type = SRC_SCREEN;
     s->aspect = ASPECT_LETTERBOX;
     s->capture_backend = 0;
+    s->cursor_visible = 1;
     s->crf = 18;
     s->kbps = 10000;
     s->gop = 0;
@@ -145,6 +146,7 @@ settings_t *settings_load(void) {
     s->custom_quality = json_int(root, "custom_quality", 0);
     s->low_latency = json_int(root, "low_latency", 1);
     s->capture_backend = json_int(root, "capture_backend", 0);
+    s->cursor_visible = json_int(root, "cursor_visible", s->cursor_visible);
     /* WUP_THINSERVER: out-of-range values are rejected by config_validate()
        (--check / daemon startup) instead of being silently clamped here. */
     s->crf = json_int(root, "crf", s->crf);
@@ -281,6 +283,7 @@ static char *settings_json(const settings_t *s) {
     json_object_set_int_member(root, "custom_quality", s->custom_quality);
     json_object_set_int_member(root, "low_latency", s->low_latency);
     json_object_set_int_member(root, "capture_backend", s->capture_backend);
+    json_object_set_int_member(root, "cursor_visible", s->cursor_visible);
     json_object_set_int_member(root, "crf", s->crf);
     json_object_set_int_member(root, "kbps", s->kbps);
     json_object_set_int_member(root, "pad_brightness", s->pad_brightness);

@@ -11,6 +11,7 @@ x11 = dependency('x11')
 xrandr = dependency('xrandr')
 xtst = dependency('xtst')
 xext = dependency('xext')
+xfixes = dependency('xfixes')
 xinerama = dependency('xinerama')
 xcb = dependency('xcb')
 xcbshm = dependency('xcb-shm')
@@ -53,7 +54,7 @@ executable('wup-thinserver',
   wup_dep[1],
   c_args: ['-DWUP_THIN_VERSION="' + meson.project_version() + '"'],
   include_directories: [include_directories('src')],
-  dependencies: [glib, gio, x11, xrandr, xtst, xext, xinerama, json_glib,
+  dependencies: [glib, gio, x11, xrandr, xtst, xext, xfixes, xinerama, json_glib,
                  threads, m_dep, swscale, drm, gbm, egl, gles,
                  xcb, xcbshm, x11xcb, pulse, cairo, pangocairo],
   link_with: wup_dep[0],
@@ -87,7 +88,7 @@ cap_test = executable('wup-capture-test',
   'tests/capture_test.c',
   'src/settings.c', 'src/x11util.c', 'src/capture.c', 'src/capture_kms.c',
   include_directories: [include_directories('src')],
-  dependencies: [glib, x11, xrandr, xtst, xext, xinerama,
+  dependencies: [glib, x11, xrandr, xtst, xext, xfixes, xinerama,
                  json_glib, threads, m_dep, swscale, drm, gbm, egl, gles,
                  xcb, xcbshm, x11xcb],
   link_with: wup_dep[0],
@@ -97,6 +98,8 @@ py = find_program('python3')
 test('config', py, args: [files('tests/test_config.py')])
 test('geometry', py, args: [files('tests/test_geometry.py')])
 test('control-ipc', py, args: [files('tests/test_control.py')], timeout: 30)
+test('encoded-cursor', py, args: [files('tests/test_encoded_cursor.py')],
+  timeout: 40, is_parallel: false)
 test('capture-xvfb', find_program('sh'),
   args: [files('tests/run_capture_test.sh')],
   depends: cap_test, timeout: 60)

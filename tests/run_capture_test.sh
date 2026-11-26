@@ -4,9 +4,7 @@ set -eu
 cd "$(dirname "$0")/.."
 DISP=:${WUP_TEST_DISPLAY:-77}
 XVFB_PID=""
-WINDOW_PID=""
 cleanup() {
-    [ -n "$WINDOW_PID" ] && kill "$WINDOW_PID" 2>/dev/null || true
     [ -n "$XVFB_PID" ] && kill "$XVFB_PID" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -17,9 +15,6 @@ for i in $(seq 1 50); do
     DISPLAY=$DISP xdpyinfo >/dev/null 2>&1 && break
     sleep 0.1
 done
-# A real window gives the root framebuffer non-black pixels.
-DISPLAY=$DISP xlogo >/dev/null 2>&1 &
-WINDOW_PID=$!
-sleep 0.5
+DISPLAY=$DISP xsetroot -solid '#204060'
 
 DISPLAY=$DISP ./build/wup-capture-test

@@ -6,6 +6,7 @@
   "custom_quality": 0,
   "low_latency": 1,
   "capture_backend": 0,
+  "cursor_visible": 1,
   "crf": 18,
   "kbps": 10000,
   "pad_brightness": -1,

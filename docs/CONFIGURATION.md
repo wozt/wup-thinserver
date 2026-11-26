@@ -25,6 +25,7 @@ valid file unchanged.
 | `source_type` | int | `0` | `0` screen (whole display), `1` window, `2` region. ThinServer uses `0`. |
 | `aspect` | int | `1` | `0` stretch, `1` letterbox, `2` crop — how the desktop maps into 854x480. |
 | `capture_backend` | int | `0` | `0` XCB MIT-SHM, `1` XCB GetImage, `2` KMS CPU, `3` KMS EGL. Xvfb → `0` or `1`. |
+| `cursor_visible` | int | `1` | Composite the current X11 cursor into the encoded frame. Applies to X11 and KMS CPU capture; KMS EGL does not expose a BGRA composition stage. |
 | `preset_name` / `crf` / `kbps` / `custom_quality` | | `Balanced`, 18, 10000 | x264 quality. Presets: Economy (23/4000), Balanced (18/10000), Max (14/20000). |
 | `low_latency` | int | `1` | zerolatency x264: no B-frames/lookahead. Keep `1` for the GamePad decoder. |
 | `audio_pc_to_pad` | int | `1` | Stream session audio to the GamePad. |

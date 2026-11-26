@@ -14,6 +14,7 @@
 #include <xcb/xproto.h>
 #include <X11/Xutil.h>
 #include <X11/Xlib-xcb.h>
+#include <X11/extensions/Xfixes.h>
 
 #define FW 854
 #define FH 480
@@ -137,15 +138,72 @@ static int setup_scaler(capture_t *c) {
     return c->tmp ? 0 : -1;
 }
 
+/* X11 GetImage and MIT-SHM return drawable pixels only: the X server cursor
+ * is a separate sprite. Composite XFixes' premultiplied ARGB cursor after
+ * scaling so its position, hotspot and size follow the streamed geometry. */
+static void composite_cursor(capture_t *c, unsigned char *out) {
+    if (!c->cursor_visible || !c->cursor_available || !out) return;
+    XFixesCursorImage *ci = XFixesGetCursorImage(c->dpy);
+    if (!ci || !ci->pixels || !ci->width || !ci->height) {
+        if (ci) XFree(ci);
+        return;
+    }
+
+    int origin_x = c->is_window ? c->last_x : c->cap_x;
+    int origin_y = c->is_window ? c->last_y : c->cap_y;
+    int cursor_x = ci->x - ci->xhot - origin_x;
+    int cursor_y = ci->y - ci->yhot - origin_y;
+    int base_x = c->out_x, base_y = c->out_y;
+    if (c->aspect == ASPECT_CROP) {
+        base_x -= (c->tmp_w - FW) / 2;
+        base_y -= (c->tmp_h - FH) / 2;
+    }
+
+    int x0 = base_x + (int)((long long)cursor_x * c->tmp_w / c->src_w);
+    int y0 = base_y + (int)((long long)cursor_y * c->tmp_h / c->src_h);
+    int x1 = base_x + (int)(((long long)(cursor_x + (int)ci->width) * c->tmp_w +
+                              c->src_w - 1) / c->src_w);
+    int y1 = base_y + (int)(((long long)(cursor_y + (int)ci->height) * c->tmp_h +
+                              c->src_h - 1) / c->src_h);
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > FW) x1 = FW;
+    if (y1 > FH) y1 = FH;
+
+    for (int y = y0; y < y1; y++) {
+        int sy = (int)((long long)(y - base_y) * c->src_h / c->tmp_h) - cursor_y;
+        if (sy < 0 || sy >= (int)ci->height) continue;
+        for (int x = x0; x < x1; x++) {
+            int sx = (int)((long long)(x - base_x) * c->src_w / c->tmp_w) - cursor_x;
+            if (sx < 0 || sx >= (int)ci->width) continue;
+            uint32_t pixel = (uint32_t)ci->pixels[(size_t)sy * ci->width + sx];
+            unsigned int alpha = pixel >> 24;
+            if (!alpha) continue;
+            unsigned char *dst = out + ((size_t)y * FW + x) * 4;
+            for (int channel = 0; channel < 3; channel++) {
+                unsigned int cursor = (pixel >> (channel * 8)) & 0xff;
+                unsigned int mixed = cursor + (dst[channel] * (255 - alpha) + 127) / 255;
+                dst[channel] = (unsigned char)(mixed > 255 ? 255 : mixed);
+            }
+        }
+    }
+    XFree(ci);
+}
+
 /* ---------- public ---------- */
 
 int capture_start(capture_t *c, const settings_t *s) {
     memset(c, 0, sizeof *c);
     c->aspect = s->aspect;
     c->capture_backend = s->capture_backend;
+    c->cursor_visible = s->cursor_visible;
     c->shmid = -1;
     c->dpy = XOpenDisplay(NULL);
     if (!c->dpy) return -1;
+    int xfixes_event = 0, xfixes_error = 0;
+    c->cursor_available = XFixesQueryExtension(c->dpy, &xfixes_event, &xfixes_error);
+    if (c->cursor_visible && !c->cursor_available)
+        fprintf(stderr, "[capture] XFixes unavailable; cursor will not be visible\n");
     Window root = DefaultRootWindow(c->dpy);
 
     if (s->source_type == SRC_SCREEN) {
@@ -192,6 +250,8 @@ int capture_start(capture_t *c, const settings_t *s) {
                              c->cap_x-sc->x, c->cap_y-sc->y,
                              c->src_w, c->src_h, c->capture_backend == 3);
         if (!c->kms || (c->capture_backend == 2 && setup_scaler(c) != 0)) goto fail;
+        if (c->capture_backend == 3 && c->cursor_visible)
+            fprintf(stderr, "[capture] KMS EGL has no BGRA cursor composition stage\n");
         return 0;
     }
     if (setup_image(c) != 0 || setup_scaler(c) != 0) goto fail;
@@ -300,6 +360,7 @@ int capture_grab(capture_t *c, unsigned char *out) {
                    c->tmp + ((size_t)(sy + y) * c->tmp_w + sx) * 4,
                    (size_t)FW * 4);
     }
+    composite_cursor(c, out);
     c->last_scale_ms = (capture_seconds() - scale_beg) * 1000.0;
     return 0;
 }

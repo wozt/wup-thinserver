@@ -15,7 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential meson ninja-build pkg-config python3 git make \
         ca-certificates \
-        libglib2.0-dev libx11-dev libxrandr-dev libxtst-dev libxext-dev \
+        libglib2.0-dev libx11-dev libxrandr-dev libxtst-dev libxext-dev libxfixes-dev \
         libxinerama-dev libxcb1-dev libxcb-shm0-dev libx11-xcb-dev \
         libpulse-dev libcairo2-dev libpango1.0-dev libjson-glib-dev \
         libgtk-3-dev \
@@ -53,7 +53,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Runtime libraries the daemon links against (built in stage 1).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
-        libglib2.0-0 libx11-6 libxrandr2 libxtst6 libxext6 libxinerama1 \
+        libglib2.0-0 libx11-6 libxrandr2 libxtst6 libxext6 libxfixes3 libxinerama1 \
         libxcb1 libxcb-shm0 libx11-xcb1 \
         libpulse0 libcairo2 libpangocairo-1.0-0 libjson-glib-1.0-0 \
         libgtk-3-0 \

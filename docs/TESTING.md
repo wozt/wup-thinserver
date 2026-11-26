@@ -12,7 +12,7 @@ meson test -C build                     # unit tests (see tests/)
 ### What is covered
 
 - `tests/test_config.py` — JSON config load/validate: defaults, invalid
-  values rejected (`source_type`, `capture_backend`, `crf`, `kbps`,
+  values rejected (`source_type`, `capture_backend`, `cursor_visible`, `crf`, `kbps`,
   `input.mode`, `deadzone`, region geometry), `commands`/`mouse_buttons`
   round-trip through `settings_save`/`settings_load`.
 - `tests/test_geometry.py` — touch→desktop coordinate transform and
@@ -20,6 +20,12 @@ meson test -C build                     # unit tests (see tests/)
 - `tests/test_control.py` — isolated Xvfb daemon, socket permissions, live
   get/apply/restore, atomic persistence, and rejection of invalid keys and
   arbitrary IPC commands.
+- `tests/capture_test.c` — real Xvfb capture through both MIT-SHM and XCB
+  GetImage; defines a cursor with a non-zero hotspot and verifies its pixels,
+  scaled position and size in the final 854×480 BGRA frame.
+- `tests/test_encoded_cursor.py` — runs the real daemon and a minimal fake
+  GamePad twice, reconstructs a complete WUP `V` frame, and verifies that
+  enabling the cursor changes the encoded video payload.
 
 For a visual smoke test inside the container:
 
@@ -46,6 +52,7 @@ on the same LAN as the server.
 - [ ] Firefox ESR launches from the XFCE menu; web pages render.
 - [ ] Touch tap = left click; drag draws; long-press = right click.
 - [ ] Left stick moves pointer; right stick scrolls.
+- [ ] Pointer shape is visible at the correct position in the GamePad video.
 - [ ] ZL/ZR = left/right click (hold works for drag-select).
 - [ ] Onboard keyboard toggles with X; typing works in Firefox/Terminal.
 - [ ] A=Enter, B=Escape, D-pad arrows, Y=Alt+Tab, L/R=browser tabs,

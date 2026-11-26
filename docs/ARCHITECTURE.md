@@ -11,7 +11,7 @@ A headless daemon. Modules (in `src/`):
 | `main.c` | CLI (`--config`, `--check`, `--version`), signals, instance lock, syslog |
 | `config.c` / `settings.c` | JSON configuration load/save/validate (json-glib) |
 | `server.c` | Session loop: pad discovery, capture, encode, audio, input dispatch, reconnect |
-| `capture.c` / `capture_async.c` | X11 screen capture (XCB MIT-SHM or GetImage) + libswscale scaling to 854x480 BGRA |
+| `capture.c` / `capture_async.c` | X11 screen capture (XCB MIT-SHM or GetImage), libswscale to 854x480 BGRA, XFixes cursor composition |
 | `capture_kms.c` | Optional DRM/KMS backends (2/3); unused on Xvfb |
 | `audio.c` | PulseAudio monitor capture (PC→pad) and mic playback (pad→PC), 48 kHz s16 |
 | `input.c` | XTest key/button/wheel injection + touch gestures; optional uinput virtual gamepad; per-button shell commands and mouse buttons |
@@ -66,10 +66,16 @@ Full details in [PROTOCOL.md](PROTOCOL.md) (mirrors upstream `pad/stream`).
 
 ## Video path
 
-X11 root window → MIT-SHM `GetImage` (or XCB fallback) → libswscale scale to
-854x480 BGRA (letterbox/crop/stretch) → RGB→I420 in `wupstream_frame()` →
-patched x264 (High profile, CABAC, no B-frames, zerolatency option) → slice
-data fragmented into UDP packets paced to the pad's 59.94 Hz refresh.
+X11 root window → MIT-SHM `GetImage` (or XCB GetImage) → libswscale scale to
+854x480 BGRA (letterbox/crop/stretch) → XFixes cursor composition → RGB→I420
+in `wupstream_frame()` → patched x264 (High profile, CABAC, no B-frames,
+zerolatency option) → slice data fragmented into UDP packets paced to the
+pad's 59.94 Hz refresh.
+
+X11 framebuffer capture excludes the server-side cursor sprite. The capture
+worker therefore obtains its current themed ARGB image, coordinates and
+hotspot from XFixes and alpha-composites it into the scaled frame. This is
+server-side only and adds no GamePad framebuffer.
 
 Server-side scaling happens **before** encoding; the GamePad never allocates
 a framebuffer for the desktop resolution.
