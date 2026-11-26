@@ -43,7 +43,7 @@
       "Return", "Escape", "", "Alt+Tab",
       "Left", "Right", "Up", "Down",
       "", "", "Ctrl+Page_Up", "Ctrl+Page_Down",
-      "Ctrl+plus", "Ctrl+minus", "", "", "", "F11"
+      "Ctrl+plus", "Ctrl+minus", "Super_L", "", "", "F11"
     ],
     "stick_keys": ["", "", "", "", "", "", "", ""],
     "commands": [

@@ -28,7 +28,9 @@ const char *settings_path(void) {
 }
 
 /* default kbmouse mapping: A B X Y -> z x c v, dpad -> arrows,
-   L R -> shift ctrl, ZL ZR -> a s, +/- -> -, =, home->Escape, sticks->mouse, L3/R3 -> e q */
+   L R -> shift ctrl, ZL ZR -> a s, +/- -> -, =, sticks->mouse, L3/R3 -> e q.
+   HOME is bindable like any button (Super_L = the XFCE app menu); the
+   ThinClient only reserves its local shortcuts (5 s hold, HOME+X/Up/Down/B). */
 /* WUP_THIN_DESKTOP: GamePad -> XFCE desktop defaults (see
    config/settings.example.json and docs/CONFIGURATION.md). X is left
    unmapped here because input.commands[X] runs onboard-toggle instead;
@@ -39,7 +41,7 @@ static const char *defkeys[18] = {
     "", "",                                   /* ZL ZR (mouse buttons) */
     "Ctrl+Page_Up", "Ctrl+Page_Down",         /* L R: browser tabs */
     "Ctrl+plus", "Ctrl+minus",                /* +/-: zoom */
-    "", "", "",                               /* HOME (client menu) L3 R3 */
+    "Super_L", "", "",                        /* HOME L3 R3 */
     "F11",                                    /* TV: fullscreen */
 };
 

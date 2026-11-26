@@ -497,14 +497,9 @@ static GtkWidget *bindings_page(App *app) {
         gtk_grid_attach(GTK_GRID(grid), label, 0, i + 1, 1, 1);
         gtk_grid_attach(GTK_GRID(grid), app->bindings[i].combo, 1, i + 1, 1, 1);
         gtk_grid_attach(GTK_GRID(grid), app->bindings[i].entry, 2, i + 1, 1, 1);
-        if (i == WBTN_HOME) {
-            gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(app->bindings[i].combo));
-            gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(app->bindings[i].combo), "Reserved: ThinClient local menu");
-            gtk_combo_box_set_active(GTK_COMBO_BOX(app->bindings[i].combo), 0);
-            gtk_widget_set_sensitive(app->bindings[i].combo, FALSE);
-            gtk_widget_set_sensitive(app->bindings[i].entry, FALSE);
-            gtk_widget_set_tooltip_text(label, "HOME is handled locally by ThinClient and is not editable server-side.");
-        }
+        if (i == WBTN_HOME)
+            gtk_widget_set_tooltip_text(label, "HOME: a tap is forwarded to the desktop; "
+                "ThinClient keeps 5 s hold, HOME+X, HOME+Up/Down and HOME+B local.");
     }
     gtk_container_add(GTK_CONTAINER(scroll), grid); gtk_container_add(GTK_CONTAINER(frame), scroll);
     return frame;
