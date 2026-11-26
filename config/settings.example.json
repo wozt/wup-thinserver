@@ -1,0 +1,61 @@
+{
+  "pad_ip": "",
+  "source_type": 0,
+  "aspect": 1,
+  "preset_name": "Balanced",
+  "custom_quality": 0,
+  "low_latency": 1,
+  "capture_backend": 0,
+  "crf": 18,
+  "kbps": 10000,
+  "pad_brightness": -1,
+  "audio_pc_to_pad": 1,
+  "audio_pad_to_pc": 1,
+  "pad_volume_controls_pc": 1,
+  "gamepad_only": 0,
+  "gamepad_only_black": 0,
+  "audio_monitor": "default",
+  "autostart_stream": 1,
+  "auto_reconnect": 1,
+  "source": {
+    "output": "",
+    "window_class": "",
+    "window_id": 0,
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+  },
+  "input": {
+    "mode": 1,
+    "deadzone": 120,
+    "sensitivity": 100,
+    "invert_y": 0,
+    "gyro_mode": 0,
+    "gyro_sens": 100,
+    "gyro_bias": [0, 0, 0],
+    "touch_as_mouse": 1,
+    "right_stick_mouse": 1,
+    "keys": [
+      "Return", "Escape", "", "Alt+Tab",
+      "Left", "Right", "Up", "Down",
+      "", "", "Ctrl+Page_Up", "Ctrl+Page_Down",
+      "Ctrl+plus", "Ctrl+minus", "", "", "", "F11"
+    ],
+    "stick_keys": ["a", "d", "w", "s", "Left", "Right", "Up", "Down"],
+    "commands": [
+      "", "", "onboard-toggle", "",
+      "", "", "", "",
+      "", "", "", "",
+      "", "", "", "", "", ""
+    ],
+    "mouse_buttons": [
+      0, 0, 0, 0,
+      0, 0, 0, 0,
+      1, 3, 0, 0,
+      0, 0, 0, 0, 0, 0
+    ],
+    "cmd_preset": "",
+    "cmd_presets": []
+  }
+}

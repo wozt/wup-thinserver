@@ -1,0 +1,49 @@
+# WUP ThinServer — Docker Compose (V2)
+#
+# Builds the image and runs one container = one independent Linux desktop
+# session + streaming daemon.
+#
+# Networking: host mode. Rationale (see docs/INSTALLATION.md):
+#   * the WUP Stream protocol discovers the GamePad via UDP broadcast on
+#     port 50001, which does not cross Docker's NAT bridge;
+#   * the daemon replies to the GamePad's UDP port 50000.
+#   Host mode exposes exactly those UDP ports on the LAN. No TCP ports are
+#   opened. The container remains unprivileged with its own PID/mount/UTS
+#   namespaces — only the network namespace is shared.
+#   To avoid clashes with a WUP Stream server on the same host, don't run
+#   both at once against the same GamePad (they share ports 50000/50001).
+#
+# Environment overrides (see docs/CONFIGURATION.md):
+#   DESKTOP_WIDTH / DESKTOP_HEIGHT  (854x480, 1066x600, 1280x720, 1920x1080)
+#   KEYBOARD_LAYOUT / KEYBOARD_VARIANT / LOCALE
+#   DISPLAY_NUM                    (default 99)
+
+services:
+  wup-thinserver:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        DESKTOP_WIDTH: ${DESKTOP_WIDTH:-1280}
+        DESKTOP_HEIGHT: ${DESKTOP_HEIGHT:-720}
+    image: wup-thinserver:latest
+    container_name: wup-thinserver
+    init: true                 # tini: proper signal forwarding + reaping
+    network_mode: host         # see rationale above
+    environment:
+      DESKTOP_WIDTH: ${DESKTOP_WIDTH:-1280}
+      DESKTOP_HEIGHT: ${DESKTOP_HEIGHT:-720}
+      DISPLAY_NUM: ${DISPLAY_NUM:-99}
+      KEYBOARD_LAYOUT: ${KEYBOARD_LAYOUT:-us}
+      KEYBOARD_VARIANT: ${KEYBOARD_VARIANT:-}
+      LOCALE: ${LOCALE:-C.UTF-8}
+      WUP_THIN_CONFIG: /home/wup/.config/wup-thinserver/settings.json
+    volumes:
+      # Persistent GamePad user home: Firefox profile, downloads, XFCE and
+      # daemon settings survive container recreation.
+      - wup-home:/home/wup
+    restart: unless-stopped
+    # No privileged mode, no host socket mounts — by design.
+
+volumes:
+  wup-home:

@@ -1,0 +1,113 @@
+# Installation & deployment
+
+Three deployment profiles share the same provisioning:
+
+| Profile | Method | Status |
+|---|---|---|
+| AMD64 Docker | `docker compose up -d` | primary, in progress |
+| Debian / Raspberry Pi OS native | `scripts/install-native.sh` (planned) | planned |
+| Raspberry Pi images | generated from the same provisioning | planned |
+
+## Docker (primary)
+
+### Build and run
+
+```sh
+docker compose up -d --build     # first build takes a while (desktop + x264)
+docker compose ps
+docker compose logs -f wup-thinserver
+```
+
+### Common commands
+
+```sh
+docker compose stop              # stop container (session processes end)
+docker compose start             # start again
+docker compose restart           # restart
+docker compose down              # stop and remove container (volume kept)
+docker compose up -d --build     # rebuild after pulling changes
+docker compose logs -f           # logs
+docker compose exec wup bash     # shell inside (user wup)
+```
+
+### Persistent data
+
+The GamePad user's home (`/home/wup`) is a named volume `wup-home`:
+Firefox profiles, bookmarks, downloads, XFCE settings, Onboard settings and
+the daemon's `settings.json` survive container recreation.
+
+```sh
+# backup
+docker run --rm -v wup-thinserver_wup-home:/data -v "$PWD":/backup \
+    alpine tar czf /backup/wup-home-$(date +%F).tgz -C /data .
+
+# reset the desktop environment (keeps the image)
+docker compose down
+docker volume rm wup-thinserver_wup-home
+docker compose up -d
+
+# uninstall
+docker compose down -v          # also deletes the home volume
+docker rmi wup-thinserver:latest
+```
+
+### Networking
+
+The container uses bridge networking (default compose network). The daemon
+needs:
+
+- UDP **50001** broadcast listener (pad discovery, bound on the container's
+  interfaces) — GamePad beacons reach it because the GamePad broadcasts.
+- UDP replies to the GamePad's source port (ephemeral host port → pad :50000).
+
+Outbound UDP to the LAN works through NAT; inbound discovery relies on the
+GamePad's broadcast `B` packets, which Docker's bridge forwards only if the
+container shares the host network **or** the pad's subnet broadcast reaches
+the bridge. For the first prototype `network_mode: host` is used — see
+`docker-compose.yml` comments for the rationale and how to switch to bridge
+with `macvlan`/`ipvlan` later.
+
+> Port conflicts: WUP ThinServer and the original WUP Stream server both
+> listen on UDP 50001 for discovery and send to pad :50000. They can coexist
+> (each binds its own ephemeral socket; `SO_REUSEPORT`/`SO_REUSEADDR` is set
+> on the discovery socket), but a pad pairs with whichever server answers —
+> do not run both against the same GamePad.
+
+### Inspecting the virtual display (testing without a GamePad)
+
+```sh
+docker compose exec wup bash
+DISPLAY=:99 xwd -root -silent | xwdtopnm | pnmtopng > /tmp/screen.png   # needs x11-apps/netpbm
+# or simpler, inside the image:
+DISPLAY=:99 import -window root /tmp/screen.png                        # imagemagick (optional)
+ffmpeg -f x11grab -video_size 1280x720 -i :99 -frames:v 1 /tmp/shot.png
+```
+
+`x11vnc` can be added for interactive debugging (not installed by default).
+
+## Native installation (planned, Milestone 7)
+
+`scripts/install-native.sh` will:
+
+- create the `wup` session user,
+- install the same package set and desktop provisioning,
+- install a systemd user service `wup-thinserver.service` and a session
+  launcher `wup-thin-session.service`,
+- never touch the user's existing desktop or X session,
+- provide `wup-thin-uninstall.sh`.
+
+The desktop resolution is configured once (env `DESKTOP_WIDTH`,
+`DESKTOP_HEIGHT`, `DESKTOP_DEPTH`) and shared by Docker and native installs.
+
+## Security notes
+
+- No authentication or encryption: anyone on the LAN who can reach the
+  daemon's UDP ports can view the desktop and inject input. **Trusted
+  networks only.**
+- The container is unprivileged (`USER wup`), no `--privileged`, no host
+  Docker socket, no host X11 (`/tmp/.X11-unix`) or PulseAudio socket mounts.
+- Firefox keeps its sandbox and security features; the container adds no
+  `--no-sandbox` flags.
+- Input injection uses XTest into the session display only.
+- `/dev/uinput` virtual-gamepad mode is optional and off by default
+  (`input.mode = 1`, kb/mouse). If enabled it needs `uinput` group access.

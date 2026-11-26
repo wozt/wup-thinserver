@@ -1,0 +1,23 @@
+# Local agent instructions (never commit)
+/AGENTS.md
+
+# Build output
+/build/
+/build-*/
+/meson-private/
+/meson-logs/
+/meson-info/
+.subprojects/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+
+# Local config and data (never commit user settings)
+*.local.json
+/var/

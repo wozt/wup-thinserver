@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Config validation tests for wup-thinserver (stdlib unittest).
+
+Runs the real binary with --check against crafted HOME directories so the
+defaults file is never touched.
+"""
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+BINARY = ROOT / "build" / "wup-thinserver"
+
+
+def run_check(home: Path, config: dict | None = None) -> subprocess.CompletedProcess:
+    cfgdir = home / ".config" / "wup-thinserver"
+    cfgdir.mkdir(parents=True, exist_ok=True)
+    if config is not None:
+        (cfgdir / "settings.json").write_text(json.dumps(config))
+    env = dict(os.environ, HOME=str(home), DISPLAY=":99")
+    return subprocess.run(
+        [str(BINARY), "--check"], env=env,
+        capture_output=True, text=True, timeout=15,
+    )
+
+
+class ConfigTest(unittest.TestCase):
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+
+    def test_defaults_valid(self):
+        r = run_check(self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("configuration OK", r.stdout)
+        # daemon defaults: stream on connect, kb/mouse input, X -> onboard
+        self.assertIn("mode=1", r.stdout)
+        self.assertIn("onboard-toggle", r.stdout)
+
+    def test_invalid_source_type(self):
+        r = run_check(self.home, {"source_type": 7})
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("source_type", r.stderr)
+
+    def test_invalid_capture_backend(self):
+        r = run_check(self.home, {"capture_backend": 9})
+        self.assertEqual(r.returncode, 2)
+
+    def test_invalid_crf(self):
+        self.assertEqual(run_check(self.home, {"crf": 99}).returncode, 2)
+        self.assertEqual(run_check(self.home, {"crf": -1}).returncode, 2)
+
+    def test_invalid_kbps(self):
+        self.assertEqual(run_check(self.home, {"kbps": -5}).returncode, 2)
+        self.assertEqual(run_check(self.home, {"kbps": 999999}).returncode, 2)
+
+    def test_invalid_input_mode(self):
+        self.assertEqual(
+            run_check(self.home, {"input": {"mode": 3}}).returncode, 2)
+
+    def test_invalid_deadzone(self):
+        self.assertEqual(
+            run_check(self.home, {"input": {"deadzone": 999}}).returncode, 2)
+
+    def test_region_requires_geometry(self):
+        self.assertEqual(
+            run_check(self.home, {"source_type": 2,
+                                  "source": {"w": 0, "h": 0}}).returncode, 2)
+        r = run_check(self.home, {"source_type": 2,
+                                  "source": {"w": 400, "h": 300}})
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_commands_and_mouse_buttons_accepted(self):
+        r = run_check(self.home, {"input": {
+            "commands": [""] * 17 + ["onboard-toggle"],
+            "mouse_buttons": [0] * 17 + [1],
+        }})
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_malformed_json_uses_defaults(self):
+        cfgdir = self.home / ".config" / "wup-thinserver"
+        cfgdir.mkdir(parents=True)
+        (cfgdir / "settings.json").write_text("{not json")
+        r = run_check(self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()
