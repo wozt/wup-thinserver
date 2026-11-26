@@ -31,6 +31,7 @@ protocol.
 | `get` | Return the current input/audio configuration and state. |
 | `validate_input` | Validate a proposed `input` object without changing state. |
 | `apply_input` | Validate, atomically save, then publish input settings live. |
+| `set_pad_brightness` | Set `pad_brightness` live: `{"op":"set_pad_brightness","level":N}` where `N` is `-1` (leave the pad's level alone) or `1`–`6` (discrete hardware levels). Persisted like other settings; does **not** reload held inputs, and republishes the brightness to a connected pad via the stream protocol. `state.backlight` reports the pad's last reported level while connected. |
 | `restore_defaults` | Atomically save and apply the default input settings. |
 
 Every reply contains `ok`. Failed replies contain `error`; successful mutating

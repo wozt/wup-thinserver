@@ -6,25 +6,35 @@ Meson's `-Dsettings_app=disabled` option for daemon-only builds.
 
 ## Implemented
 
-- Complete GamePad button list with HOME clearly reserved for ThinClient.
-- Live Desktop/Gamepad mode selector with the effective daemon mode, uinput
-  availability, and fallback reason reported by the daemon.
+- Single-page dashboard (no tabs): bindings on the left, stacked sections
+  on the right inside one vertically scrolling area.
+- Complete GamePad button list — HOME included and editable like every
+  other control; the ThinClient reserves only its local shortcut
+  combinations (5 s hold, HOME+X, HOME+Up/Down, HOME+B), never the tap.
+- Live Desktop/Gamepad mode selector reflecting the daemon's *effective*
+  mode, uinput availability, and fallback reason — including switches
+  initiated from the GamePad (HOME+X) or `'T'` packets.
 - Disabled, key/shortcut capture, mouse buttons, wheel actions, safe desktop
   shortcuts, function keys, and the Onboard toggle.
 - Independent left/right stick modes, directional keys, deadzone,
   sensitivity, and vertical inversion.
+- Hardware screen-brightness slider (Auto + discrete levels 1–6) applied
+  live through `set_pad_brightness` without restarting stream, daemon or
+  container; the live monitor shows the pad's reported backlight level.
 - Touch-as-pointer, gyroscope mode/sensitivity, microphone forwarding, and
   physical volume-slider controls.
 - A live 4 Hz diagnostic view for connection state, pressed buttons, sticks,
-  touch coordinates, and volume. It performs no repaint work per video frame.
+  touch coordinates, volume, and backlight. It performs no repaint work per
+  video frame.
 - Live validation, application, atomic persistence, reload, and restore
   defaults through the local control socket.
 
 The interface uses a compact borderless WOZT-style window with an integrated
 title bar, taskbar identity, eight resize zones, framed sections, square
-controls, fixed status/actions, and vertically scrolling content. It is sized
-and manually rendered at 854×480; larger ThinServer desktop sizes have more
-working space.
+controls, fixed status/actions, and a slightly larger base font. The default
+size is the window manager's actual work area (`_NET_WORKAREA`), so the XFCE
+taskbar stays visible; smaller windows scroll vertically and may scroll
+horizontally rather than clip.
 
 ## Desktop integration
 

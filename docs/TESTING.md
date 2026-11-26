@@ -32,6 +32,26 @@ meson test -C build                     # unit tests (see tests/)
   Nintendo-position button mappings and a stick axis, then verifies held
   button release, axis centering, live Desktop/Gamepad transitions, and device
   cleanup. It skips with exit 77 when `/dev/uinput` is unavailable.
+- `tests/test_control.py` covers `set_pad_brightness` (range validation,
+  atomic persistence, rejection of bad levels) and live mode switching via
+  `apply_input` (effective-mode reporting, Gamepad preflight rejection,
+  persistence). The `'T'` pad→daemon packet path shares `input_set_mode`
+  and is exercised end-to-end only with a real/fake GamePad session.
+
+### Inside Docker (gamepad overlay)
+
+With `docker-compose.gamepad.yml` the same checks run in-container:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.gamepad.yml up -d --build
+# build the host test binary, then copy it in (it is not shipped in the image):
+cp build/wup-gamepad-test /tmp/
+sudo docker cp /tmp/wup-gamepad-test wup-thinserver:/tmp/
+sudo docker exec --user wup wup-thinserver /tmp/wup-gamepad-test
+sudo docker exec wup-thinserver cat /sys/class/input/event*/device/name | grep -i wup
+```
+
+The watcher log is `/tmp/gamepad-devd.log` inside the container.
 
 For a visual smoke test inside the container:
 

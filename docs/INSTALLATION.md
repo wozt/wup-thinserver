@@ -68,6 +68,44 @@ the isolation boundary):
 docker compose up -d
 ```
 
+### GamePad (virtual controller) mode
+
+Desktop mode needs nothing extra. For Gamepad mode — the native virtual
+evdev controller that games and RetroArch-style emulators can use — add
+the optional overlay on hosts with `/dev/uinput` (kernel `uinput` module):
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.gamepad.yml up -d --build
+```
+
+What the overlay does (`docker-compose.gamepad.yml` documents each part):
+
+- bind-mounts `/dev/uinput` (no `privileged`, no host `/dev/input`);
+- lets the entrypoint `mknod` a private `/dev/uinput-wup` node so the
+  host's own uinput permissions are untouched;
+- starts `wup-gamepad-devd`, a small watcher that creates
+  `/dev/input/eventN` for `WUP ThinServer Gamepad` so SDL/evdev apps can
+  open it, and removes stale nodes after mode switches;
+- adds `libsdl2-2.0-0` to the image so SDL applications can enumerate the
+  controller.
+
+What it does **not** do — read before relying on it:
+
+- The virtual controller is created in the **shared host kernel**: SDL and
+  evdev applications running on the host itself can also see
+  `WUP ThinServer Gamepad`. Docker isolates the device *nodes* visible
+  inside the container; it does not virtualize the kernel input
+  subsystem. There is no complete input-device isolation.
+- Physical host keyboards, mice and controllers are **not** mounted into
+  the container; only the single virtual node is reachable.
+- Hosts without uinput keep working: Desktop mode is unaffected and
+  Gamepad mode reports the probe error in Settings. Set `WUP_GAMEPAD=0`
+  to disable the overlay even when `/dev/uinput` is present, or point
+  `WUP_UINPUT_PATH` at a differently named node.
+
+Switch modes live from the GamePad (HOME+X) or in Settings — the choice
+is persisted and applies without a restart.
+
 ### Installing extra packages
 
 ```sh

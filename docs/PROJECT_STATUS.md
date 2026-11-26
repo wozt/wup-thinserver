@@ -135,9 +135,20 @@ performance measurement, native install, Raspberry Pi).
       expose the configured mode, effective mode, verified availability, and
       useful uinput failure status. A failed Gamepad preflight leaves Desktop
       mode and the last valid settings intact.
-- [ ] **Pending Docker integration and physical validation:** controlled
-      `/dev/uinput` plus dynamic evdev visibility without privileged mode;
-      live HOME+X switching on the real client.
+- [x] **Implemented:** Docker gamepad overlay (`docker-compose.gamepad.yml`)
+      — bind-mounted `/dev/uinput`, privately `mknod`'d `/dev/uinput-wup`,
+      `wup-gamepad-devd` evdev-node watcher, `libsdl2` in the image, no
+      privileged mode, no host input devices. Documented limitation: the
+      virtual controller is visible to host-kernel SDL/evdev apps too.
+- [x] **Implemented / automatically tested:** `'T'` live mode-switch protocol
+      (request/ack + `'H'` mode byte) shared with the client; HOME is
+      bindable server-side; `set_pad_brightness` IPC op with validation and
+      persistence.
+- [x] **Implemented:** single-page Settings dashboard (no tabs), larger
+      font, work-area sizing, hardware brightness slider.
+- [ ] **Pending Docker in-container validation and physical retest:** SDL/
+      evdev detection inside the gamepad container; live HOME+X switching
+      and HOME shortcuts on the real client.
 
 ## Known issues / risks
 

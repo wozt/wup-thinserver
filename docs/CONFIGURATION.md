@@ -31,6 +31,7 @@ valid file unchanged.
 | `audio_pc_to_pad` | int | `1` | Stream session audio to the GamePad. |
 | `audio_pad_to_pc` | int | `0` | Play the GamePad microphone on the session. |
 | `pad_volume_controls_pc` | int | `1` | Physical volume slider → PulseAudio sink volume (hysteresis-filtered). |
+| `pad_brightness` | int | `-1` | GamePad hardware backlight: `-1` leave the pad's level alone, `1`–`6` discrete levels. Applied live to a connected pad, persisted, and adjustable from Settings. `-1` also means "not managed" — the pad keeps its own setting. |
 | `audio_monitor` | string | `"default"` | PulseAudio monitor source; `"default"` = default sink's monitor. |
 | `autostart_stream` | int | `1` | Begin streaming as soon as a client connects. |
 | `auto_reconnect` | int | `1` | Keep waiting for the client after a disconnect (session persists). |
@@ -54,7 +55,7 @@ valid file unchanged.
 | `left_stick_mouse` | Left stick → relative pointer motion (desktop default `1`) |
 | `right_stick_mouse` | Right stick → relative pointer motion (legacy; `0` by default) |
 | `right_stick_scroll` | Right stick → wheel scroll, horizontal + vertical (desktop default `1`) |
-| `keys[18]` | X11 keysym chords per button, order: `A B X Y ← → ↑ ↓ ZL ZR L R + − HOME L3 R3 TV`. Chords like `"Ctrl+Page_Up"` supported. |
+| `keys[18]` | X11 keysym chords per button, order: `A B X Y ← → ↑ ↓ ZL ZR L R + − HOME L3 R3 TV`. Chords like `"Ctrl+Page_Up"` supported. HOME is bindable; the ThinClient reserves only its local shortcut combinations (5 s hold, HOME+X/Up/Down/B), never the plain tap. |
 | `stick_keys[8]` | Keys for stick directions: `LX- LX+ LY- LY+ RX- RX+ RY- RY+` (empty by default — sticks drive pointer/scroll instead) |
 | `commands[18]` | Shell command run on each **press** edge (kb/mouse mode). E.g. `["", "", "onboard-toggle", ...]` toggles Onboard on X. |
 | `mouse_buttons[18]` | X11 button (1=left, 2=middle, 3=right, 4/5=wheel) on press/release edges. Takes precedence over `keys`. |
@@ -76,7 +77,7 @@ valid file unchanged.
 | D-pad | arrow keys |
 | + / − | zoom (Ctrl+plus / Ctrl+minus) |
 | TV | fullscreen (F11) |
-| HOME | local ThinClient menu — never forwarded to the desktop |
+| HOME | short tap forwards the configured binding (default `Super_L`, the XFCE app menu); ThinClient keeps 5 s hold → local menu, HOME+X → live mode switch, HOME+Up/Down → local backlight, HOME+B → exit. Bindable like any other button in `keys[]`/`commands[]`/`mouse_buttons[]`. |
 | Volume slider | PulseAudio volume |
 
 `commands[]` owns a button entirely: a press edge runs the shell command and
@@ -113,6 +114,13 @@ Gamepad mode is effective. Touch-as-mouse and gyro-as-mouse are separately
 configurable and can remain enabled. When uinput creation fails, ThinServer
 reports the reason and keeps Desktop mode effective instead of leaving input
 partially active.
+
+The effective mode can also be switched **live** while streaming: the
+ThinClient sends a `'T'` control packet (HOME+X) or the Settings app uses
+the IPC `apply_input`. The daemon validates Gamepad availability, applies
+the switch without dropping the stream, persists `input.mode`, and — for
+`'T'` requests — acknowledges with the effective mode. A Gamepad request
+that cannot be satisfied is rejected and Desktop stays active.
 
 ## Environment overrides (libwupstream)
 

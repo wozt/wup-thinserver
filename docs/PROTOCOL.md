@@ -14,9 +14,12 @@ uses UDP **50001** broadcast.
    every second.
 2. Daemon (`wupstream_open`) listens on 50001 (SO_REUSEADDR/REUSEPORT) for a
    `B` packet, or connects directly to `pad_ip:50000` when configured.
-3. Daemon sends `H` hellos every 250 ms: `'H' ver flags mic light`. `flags`
-   bit0 = request microphone; `light` = backlight level 1..6 (bit6 = off,
-   bit7 = keep).
+3. Daemon sends `H` hellos every 250 ms: `'H' ver flags mic light mode`.
+   `flags` bit0 = request microphone; `light` = backlight level 1..6
+   (bit6 = off, bit7 = keep); `mode` (5th byte, WUP_THIN_PROTOCOL
+   extension) = the daemon's effective input mode: `0` Gamepad,
+   `1` Desktop, `0xff` unknown until the input context exists. Clients
+   compiled against the original 4-byte hello simply never read the byte.
 4. Client answers `I` input packets (below). Once the refresh timing is
    locked, the daemon starts encoding.
 
@@ -24,7 +27,8 @@ uses UDP **50001** broadcast.
 
 | Tag | Layout | Meaning |
 |---|---|---|
-| `H` | `H ver flags mic light` (4 B) | hello / keepalive |
+| `H` | `H ver flags mic light mode` (5 B, `mode` optional/extension) | hello / keepalive; byte 4 = effective input mode |
+| `T` | `'T' reqid status mode` | ack for a client `T` request: status `0` applied, `1` rejected (e.g. Gamepad unavailable), `2` invalid; `mode` = effective mode after the request |
 | `V` | `'V' flags(1=IDR) 0 0, u32 frame, u32 offset, u32 total, ≤1400 B` | one H.264 frame split in 1400-byte fragments of **raw CABAC slice data** (no start codes, no NAL headers, emulation-prevention bytes stripped). `flags&1` marks an IDR. |
 | `A` | `'A' 0 0 0, u32 seq, PCM` | 48 kHz s16le **stereo** audio; payload a multiple of 16 bytes |
 | `R` | `'R' on 0 0` | rumble motor |
@@ -41,6 +45,7 @@ the client; the client NACKs missing fragments.
 | `I` | `'I' flags u16 ticks u8 backlight 0 0 0, 128-byte report` | input report @ ~200 Hz. `flags` bit0 = request keyframe; bits1-3 = decoder queue depth. `ticks` ≈ µs since last screen refresh. Report: buttons/sticks/touch/IMU/volume/battery (see upstream `pad/stream`). |
 | `N` | `'N' count 0 0, count × {u32 frame, u16 packet (0xffff=all), u16 0}` | request retransmission of lost video fragments |
 | `M` | `'M' 0 0 0, u32 sample, PCM mono 48 kHz` | client microphone (when enabled by `H` flags bit0) |
+| `T` | `'T' reqid mode 0` (4 B) | **WUP_THIN_PROTOCOL extension** — request a live input-mode switch. `mode`: `0` Gamepad, `1` Desktop, `0xff` toggle (against the *configured* mode). `reqid` is echoed in the `T` ack so the client can match requests; the mode is explicit, so a duplicated datagram can never toggle twice. The daemon validates Gamepad availability, applies the switch without interrupting the stream, persists the configured mode, and replies with a `T` ack carrying the *effective* mode. Older daemons drop unknown tags — clients must treat a missing ack as "unsupported" (2.5 s timeout). |
 
 ## Encoding constraints (GamePad hardware decoder)
 
