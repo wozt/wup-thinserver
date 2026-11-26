@@ -23,13 +23,15 @@ Copied verbatim from `wup-stream-server-linux/src/` unless noted:
   `input.mode=INMODE_KBMOUSE`), `WUP_THIN_CONFIG` path override, new
   `input.commands[]` (shell command per button press) and
   `input.mouse_buttons[]` (X11 button per press/release).
-- `server.c/h` — unmodified session/stream loop.
+- `server.c/h` — **modified**: complete settings snapshots and explicit live
+  key reload requests are used by the local configuration interface.
 - `capture.c/h`, `capture_async.c/h`, `capture_kms.c/h`, `kms_wire.h` —
   unmodified X11/KMS capture + scaling.
 - `audio.c/h` — unmodified PulseAudio capture/playback.
 - `input.c/h` — **modified**: `kb_buttons()` honours `commands[]` (press
   edge, `/bin/sh -c`, detached) and `mouse_buttons[]` (XTest button edges)
-  before falling back to keysym chords.
+  before falling back to keysym chords; live key reload releases all held
+  old-map inputs before parsing the replacement.
 - `x11util.c/h` — unmodified XRandR/EWMH/XTest helpers.
 - `i18n.c/h` — **modified**: GTK UI helpers (`wup_i18n_fill_combo`,
   `wup_i18n_translate_tree`) removed for the headless daemon; catalog and
@@ -40,7 +42,9 @@ Copied verbatim from `wup-stream-server-linux/src/` unless noted:
 
 `ui.c/h`, `viz.c/h`, `select.c/h`, `window_pick.c/h`, `kms_permissions.c/h`,
 `kms_helper.c`, `main.c` (GTK). Replaced by `src/main.c` (headless CLI),
-`src/config.c/h` (validation).
+`src/config.c/h` (validation). The integrated `src/settings_app.c` is a new,
+independent ThinServer-specific GTK application; it does not restore the
+upstream streaming UI.
 
 ## Protocol / encoder findings (audit summary)
 

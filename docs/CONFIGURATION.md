@@ -1,15 +1,21 @@
 # Configuration
 
-The daemon reads one JSON file. Resolution order:
+The daemon reads one JSON file. Routine input changes should use WUP
+ThinServer Settings; direct editing remains available for advanced fields.
+Resolution order:
 
 1. `--config PATH` on the command line (sets `WUP_THIN_CONFIG`),
 2. `WUP_THIN_CONFIG` environment variable,
 3. `~/.config/wup-thinserver/settings.json`.
 
 Validate without starting: `wup-thinserver --check`.
-An annotated example ships at `config/settings.example.json` (installed to
-`/usr/share/wup-thinserver/settings.example.json` or the image's
-`/etc/wup-thinserver/`).
+An annotated example ships at `config/settings.example.json` (installed in
+the shared-data directory). Docker stores the active file in the persistent
+home volume at `/home/wup/.config/wup-thinserver/settings.json`.
+
+Successful settings writes use atomic same-directory replacement. Invalid IPC
+updates and failed writes leave both the active configuration and the last
+valid file unchanged.
 
 ## Top-level keys
 
@@ -78,6 +84,10 @@ cannot also emit a stray keysym). `mouse_buttons[]` maps a button to an X11
 mouse button (1 left, 2 middle, 3 right, 4/5 wheel) on press/release edges
 and takes precedence over `keys[]` when both are set. Held mouse buttons are
 released on client disconnect.
+
+The graphical application exposes only the safe `onboard-toggle` built-in;
+it cannot create arbitrary shell commands. Existing advanced commands remain
+available through deliberate JSON editing on this trusted local session.
 
 All of it is configuration — nothing is hard-coded.
 

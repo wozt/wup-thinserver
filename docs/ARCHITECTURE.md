@@ -17,10 +17,19 @@ A headless daemon. Modules (in `src/`):
 | `input.c` | XTest key/button/wheel injection + touch gestures; optional uinput virtual gamepad; per-button shell commands and mouse buttons |
 | `x11util.c` | XRandR screens, EWMH windows, XTest helpers |
 | `i18n.c` | UI string catalog (English compiled in; JSON languages optional) |
+| `control.c` | Same-user Unix socket for validated live input updates and diagnostics |
 | `libwupstream` | WUP Stream protocol + patched x264 encoder (pinned upstream, built by `tools/build_wupstream_dep.py`) |
 
 The daemon never touches the host desktop: it opens whatever `DISPLAY`
 points to. In the container that is the private Xvfb display.
+
+### WUP ThinServer Settings (GTK3, optional Meson target)
+
+`wup-thinserver-settings` is a separate process in the private desktop. It
+does not link into the capture/encode daemon and never mutates streaming
+memory. It exchanges bounded JSON messages over a protected Unix socket. The
+daemon validates and atomically persists a candidate before publishing a
+complete settings snapshot to its worker. See [CONTROL_IPC.md](CONTROL_IPC.md).
 
 ### Session launcher (container `docker/entrypoint.sh`, native `scripts/`)
 
@@ -31,6 +40,8 @@ Owns the desktop session lifecycle, independent of the daemon:
 3. `pulseaudio` starts a private sound server (null sink + monitor).
 4. `xfce4-session` starts the desktop (panel, window manager, desktop).
 5. `wup-thinserver` starts once the display answers `xdpyinfo`.
+6. An idempotent helper installs the settings launcher in the localized XDG
+   desktop directory for new and existing persistent homes.
 
 Because the daemon and the desktop are separate processes, the Linux session
 survives GamePad disconnects and daemon restarts.

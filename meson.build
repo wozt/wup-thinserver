@@ -26,6 +26,7 @@ egl = dependency('egl')
 gles = dependency('glesv2')
 threads = dependency('threads')
 m_dep = meson.get_compiler('c').find_library('m', required: true)
+gtk3 = dependency('gtk+-3.0', required: get_option('settings_app'))
 
 # libwupstream (WUP Stream protocol + patched x264), pinned upstream source
 # built inside the Meson build directory. See docs/UPSTREAM.md.
@@ -57,6 +58,20 @@ executable('wup-thinserver',
                  xcb, xcbshm, x11xcb, pulse, cairo, pangocairo],
   link_with: wup_dep[0],
   install: true)
+
+if gtk3.found()
+  executable('wup-thinserver-settings',
+    'src/settings_app.c',
+    'src/settings.c',
+    wup_dep[1],
+    include_directories: [include_directories('src')],
+    dependencies: [gtk3, gio, json_glib],
+    install: true)
+  install_data('data/wup-thinserver-settings.desktop',
+    install_dir: get_option('datadir') / 'applications')
+  install_data('data/wup-thinserver-settings.svg',
+    install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
+endif
 
 install_data('config/settings.example.json',
   install_dir: get_option('datadir') / 'wup-thinserver')

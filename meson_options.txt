@@ -1,0 +1,3 @@
+option('settings_app', type: 'feature', value: 'auto',
+  description: 'Build the GTK3 WUP ThinServer Settings application')
+

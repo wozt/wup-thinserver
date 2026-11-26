@@ -21,4 +21,5 @@ __pycache__/
 # Local config and data (never commit user settings)
 *.local.json
 /var/
+/test-artifacts/
 .env

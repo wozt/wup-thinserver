@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=WUP ThinServer Settings
+Comment=Configure GamePad controls for the ThinServer desktop
+Exec=wup-thinserver-settings
+Icon=wup-thinserver-settings
+Terminal=false
+Categories=Settings;HardwareSettings;
+StartupNotify=true
+StartupWMClass=wup-thinserver-settings
+

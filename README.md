@@ -62,6 +62,13 @@ Inside the session: user `wup`, hostname `wup-thinserver`, XFCE desktop,
 Onboard on-screen keyboard (auto-shows on text fields, GamePad **X** toggles
 it), Firefox ESR, Thunar, Mousepad, xfce4-terminal.
 
+The desktop also contains **WUP ThinServer Settings**. Open its desktop or
+application-menu launcher to change controller bindings, stick behavior,
+touch, gyro and audio input options. Valid changes take effect immediately
+and are saved without restarting the daemon, stream, XFCE, or container. See
+[the settings application](docs/SETTINGS_APPLICATION.md) and
+[local control protocol](docs/CONTROL_IPC.md).
+
 ### Native build (Debian 13 / compatible)
 
 Prerequisites: `meson ninja-build pkg-config gcc` plus the X11/XCB,
@@ -69,12 +76,15 @@ PulseAudio, cairo/pango, json-glib and swscale development packages
 (listed in `docker/Dockerfile` and docs/BUILD.md).
 
 ```sh
-meson setup build
+meson setup build                    # GTK settings app: auto-detected
 meson compile -C build -j8
-meson test -C build --print-errorlogs     # 3 tests incl. real Xvfb capture
+meson test -C build --print-errorlogs     # 4 tests incl. IPC and real Xvfb capture
 ./build/wup-thinserver --check            # validate config
 ./build/wup-thinserver                    # needs DISPLAY of a session
+./build/wup-thinserver-settings           # needs GTK3 and the running daemon
 ```
+
+For a daemon-only build, configure with `-Dsettings_app=disabled`.
 
 The build fetches and pins `libwupstream` from `wozt/wup-stream` itself —
 no WUP Stream checkout required.

@@ -10,7 +10,7 @@
   "kbps": 10000,
   "pad_brightness": -1,
   "audio_pc_to_pad": 1,
-  "audio_pad_to_pc": 1,
+  "audio_pad_to_pc": 0,
   "pad_volume_controls_pc": 1,
   "gamepad_only": 0,
   "gamepad_only_black": 0,
