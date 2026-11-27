@@ -26,6 +26,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${1:-$(git -C "$ROOT" describe --tags --always 2>/dev/null || echo dev)}"
 VERSION="${VERSION#v}"
 OUTDIR="${2:-$ROOT/build/dist}"
+# linuxdeploy runs with cwd=$OUTDIR and resolves --executable paths relative
+# to it — keep OUTDIR absolute so relative args cannot double-prefix.
+mkdir -p "$OUTDIR"
+OUTDIR="$(cd "$OUTDIR" && pwd)"
 
 MACHINE="$(uname -m)"
 case "$MACHINE" in
