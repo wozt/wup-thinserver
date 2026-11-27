@@ -18,6 +18,7 @@ case "$PROFILE" in pi4|zero2w) ;; *) echo "unknown profile: $PROFILE" >&2; exit 
 RPI_IMAGE_GEN_TAG=v2.8.0
 RPI_IMAGE_GEN_COMMIT=262d4df5a9f9d4133370465399a7958a7c22cdc7
 BUILD_ROOT="$ROOT/build/rpi-image-gen"
+WORKROOT="$BUILD_ROOT/work-$PROFILE"
 SOURCE="$BUILD_ROOT/source"
 OUTDIR="$ROOT/build/images"
 CONFIG="thinserver-$PROFILE.yaml"
@@ -102,7 +103,6 @@ log "building $PROFILE image (this requires mount-namespace privileges)"
     # Each profile gets its own workroot (-B) so pi4 and zero2w builds can
     # run in parallel without colliding on chroot-c6e710e-dirty/.
     cd "$BUILD_ROOT"
-    WORKROOT="$BUILD_ROOT/work-$PROFILE"
     mkdir -p "$WORKROOT"
     # Its host-tool build installs shared libraries beside genimage without an
     # rpath. Keep that private prefix visible on both AMD64 and ARM64 hosts.
@@ -110,7 +110,7 @@ log "building $PROFILE image (this requires mount-namespace privileges)"
     export LD_LIBRARY_PATH="$WORKROOT/$HOST_TRIPLET/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     "$SOURCE/rpi-image-gen" build -B "$WORKROOT" -S "$PROJECT" -c "$PROJECT/config/$CONFIG"
 )
-IMAGE="$BUILD_ROOT/work/image-$IMAGE_NAME/$IMAGE_NAME.img"
+IMAGE="$WORKROOT/image-$IMAGE_NAME/$IMAGE_NAME.img"
 [ -f "$IMAGE" ] || die "rpi-image-gen did not produce $IMAGE"
 OUTPUT="$OUTDIR/$IMAGE_NAME.img.xz"
 xz -T0 -9 -c "$IMAGE" > "$OUTPUT"
