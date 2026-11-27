@@ -17,7 +17,9 @@ permissions:
 
 concurrency:
   group: release
-  cancel-in-progress: false
+  # A new push supersedes a running build: cancel it. (If a regression is
+  # suspected, re-run the cancelled workflow manually.)
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -25,11 +27,86 @@ env:
 
 jobs:
   # ------------------------------------------------------------------
+  # Change detection: diff against the previous release and flag which
+  # artifact families actually need a rebuild. Anything not flagged is
+  # carried over from the previous release's assets (same bits).
+  # ------------------------------------------------------------------
+  detect:
+    name: detect-changes
+    runs-on: ubuntu-24.04
+    outputs:
+      native: ${{ steps.diff.outputs.native }}
+      docker: ${{ steps.diff.outputs.docker }}
+      pi_debian: ${{ steps.diff.outputs.pi_debian }}
+      pi_pios: ${{ steps.diff.outputs.pi_pios }}
+      prev_tag: ${{ steps.diff.outputs.prev_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force --quiet || true
+          PREV="$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)"
+          echo "prev_tag=$PREV" >> "$GITHUB_OUTPUT"
+
+          native=false; docker=false; pi_debian=false; pi_pios=false
+          if [ -z "$PREV" ]; then
+            # No previous release: build everything once.
+            native=docker=pi_debian=pi_pios=true
+            BASE="$(git rev-parse HEAD~1 2>/dev/null || git hash-object -t tree /dev/null)"
+          else
+            BASE="$(git rev-parse "$PREV^{commit}" 2>/dev/null || git rev-parse HEAD~1)"
+          fi
+          echo "diff base: $BASE"
+          git diff --name-only "$BASE" HEAD | tee /tmp/changed.txt
+
+          while IFS= read -r f; do
+            case "$f" in
+              # Packaging scripts shape the native zip/deb/AppImage bits
+              # only — the docker image and Pi images don't use them.
+              scripts/package-*.sh)
+                native=true ;;
+              # Everything that lands in the installed payload: the daemon
+              # sources, build files, shipped data/config and session helpers.
+              src/*|meson.build|tools/build_wupstream_dep.py|data/*|config/*|provisioning/*|\
+              scripts/onboard-*|scripts/install-desktop-shortcut.sh|\
+              scripts/migrate-settings.py|scripts/wup-set-password.sh|\
+              scripts/gamepad-devd.sh|scripts/prepare-native-camera.sh|\
+              scripts/install-native.sh|scripts/build-arm64.sh|scripts/build-native-arm64.sh)
+                native=true; docker=true; pi_debian=true; pi_pios=true ;;
+              docker/*)
+                docker=true ;;
+              images/raspberry-pi/*|scripts/build-rpi-image.sh)
+                pi_debian=true ;;
+              images/raspios/*|scripts/build-pios-image.sh)
+                pi_pios=true ;;
+              *) ;;   # docs, tests, release/, tools/, workflow: no rebuild
+            esac
+          done < /tmp/changed.txt
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            native=docker=pi_debian=pi_pios=true
+          fi
+          {
+            echo "native=$native"; echo "docker=$docker"
+            echo "pi_debian=$pi_debian"; echo "pi_pios=$pi_pios"
+          } >> "$GITHUB_OUTPUT"
+          echo "rebuild: native=$native docker=$docker pi_debian=$pi_debian pi_pios=$pi_pios"
+
+  # ------------------------------------------------------------------
   # Native Linux artifacts: zip bundle, .deb, AppImage — one job per arch,
   # each inside a native Debian 13 (trixie) container for env parity.
   # ------------------------------------------------------------------
   native:
     name: native-${{ matrix.arch }}
+    needs: detect
+    if: needs.detect.outputs.native == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -96,6 +173,8 @@ jobs:
   # ------------------------------------------------------------------
   docker:
     name: docker-image
+    needs: detect
+    if: needs.detect.outputs.docker == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -129,6 +208,8 @@ jobs:
   # ------------------------------------------------------------------
   pi-debian:
     name: pi-debian-$PROFILE
+    needs: detect
+    if: needs.detect.outputs.pi_debian == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
@@ -171,6 +252,8 @@ jobs:
   # ------------------------------------------------------------------
   pi-pios:
     name: pi-pios-$PROFILE
+    needs: detect
+    if: needs.detect.outputs.pi_pios == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
@@ -216,12 +299,58 @@ jobs:
   # ------------------------------------------------------------------
   release:
     name: publish-release
-    needs: [native, docker, pi-debian, pi-pios]
+    needs: [detect, native, docker, pi-debian, pi-pios]
+    # Skipped build jobs report 'skipped', which is fine; a real failure or
+    # a cancellation must not publish an incomplete release.
+    if: >-
+      always() && needs.detect.result == 'success' &&
+      !contains(needs.native.result + ',' + needs.docker.result + ',' +
+                needs.pi-debian.result + ',' + needs.pi-pios.result, 'failure') &&
+      !contains(needs.native.result + ',' + needs.docker.result + ',' +
+                needs.pi-debian.result + ',' + needs.pi-pios.result, 'cancelled')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Compute tag and carry over unchanged assets
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NATIVE: ${{ needs.detect.outputs.native }}
+          DOCKER: ${{ needs.detect.outputs.docker }}
+          PI_DEBIAN: ${{ needs.detect.outputs.pi_debian }}
+          PI_PIOS: ${{ needs.detect.outputs.pi_pios }}
+          PREV_TAG: ${{ needs.detect.outputs.prev_tag }}
+        run: |
+          set -euo pipefail
+          TAG="$(python3 tools/publish_release.py --next-tag)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "prev=$PREV_TAG"
+
+          # Components that were not rebuilt reuse the previous release's
+          # assets verbatim (identical inputs -> identical bits). Fresh
+          # artifacts win on name collisions (cp -n below).
+          mkdir -p dist prev
+          if [ -n "$PREV_TAG" ]; then
+            pats=()
+            [ "$NATIVE" != "true" ] && pats+=(
+              -p 'wup-thinserver-*-amd64.zip' -p 'wup-thinserver-*-amd64.deb'
+              -p 'wup-thinserver-*-amd64.AppImage'
+              -p 'wup-thinserver-*-arm64.zip' -p 'wup-thinserver-*-arm64.deb'
+              -p 'wup-thinserver-*-arm64.AppImage')
+            [ "$PI_DEBIAN" != "true" ] && pats+=(
+              -p 'wup-thinserver-pi[0-9]*-arm64.img.xz'
+              -p 'wup-thinserver-[!p]*-arm64.img.xz')
+            [ "$PI_PIOS" != "true" ] && pats+=(
+              -p 'wup-thinserver-pios-*-arm64.img.xz')
+            if [ "${#pats[@]}" -gt 0 ]; then
+              gh release download "$PREV_TAG" "${pats[@]}" -D prev --clobber
+              cp -rn prev/. dist/
+              rm -rf prev
+            fi
+          fi
 
       - uses: actions/download-artifact@v8
         with:
@@ -237,17 +366,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute tag, alias docker image, render compose
-        id: release
+      - name: Alias docker image, render compose
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+          DOCKER: ${{ needs.detect.outputs.docker }}
+          PREV_TAG: ${{ needs.detect.outputs.prev_tag }}
         run: |
-          TAG="$(python3 tools/publish_release.py --next-tag)"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-          docker buildx imagetools create \
-            -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG" \
-            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+          set -euo pipefail
+          if [ "$DOCKER" = "true" ]; then
+            docker buildx imagetools create \
+              -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG" \
+              "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+          elif [ -n "$PREV_TAG" ]; then
+            # Image unchanged: point the new release tag at the previous
+            # release's image bits.
+            docker buildx imagetools create \
+              -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG" \
+              "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$PREV_TAG"
+          fi
 
           sed "s|__WUP_IMAGE__|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG|" \
             release/docker-compose.yml > dist/docker-compose.yml
