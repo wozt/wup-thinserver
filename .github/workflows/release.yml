@@ -254,6 +254,9 @@ jobs:
           cp release/docker-compose.camera.yml dist/
           cp release/README.md dist/README.md
 
+          # Buildx drops a *.dockerbuild record artifact; never publish it.
+          rm -f dist/*.dockerbuild
+
           # One combined checksum file for every artifact in the release.
           (cd dist && sha256sum -- * | grep -v 'SHA256SUMS$' > SHA256SUMS)
 

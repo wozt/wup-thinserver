@@ -116,7 +116,10 @@ if [ -n "$PIXBUF_DIR" ] && [ -d "$PIXBUF_DIR" ] && [ -n "$PIXBUF_QUERY" ] && [ -
 fi
 
 # --- custom AppRun: dispatch settings (default) / daemon -----------------------
-cat > "$OUTDIR/wup-thinserver-AppRun" <<'LAUNCHER'
+# Keep the source outside OUTDIR: dist/ contents are uploaded as release
+# assets and this helper must not leak into them.
+APPRUN_SRC="$(mktemp "${TMPDIR:-/tmp}/wup-apprun.XXXXXX")"
+cat > "$APPRUN_SRC" <<'LAUNCHER'
 #!/bin/sh
 set -eu
 APPDIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
@@ -137,7 +140,7 @@ case "${1:-}" in
     *) exec "$APPDIR/usr/bin/wup-thinserver-settings" "$@" ;;
 esac
 LAUNCHER
-chmod 755 "$OUTDIR/wup-thinserver-AppRun"
+chmod 755 "$APPRUN_SRC"
 
 chmod -R a+rX "$APPDIR"
 
@@ -164,7 +167,7 @@ rm -f "$OUTDIR"/*.AppImage
         --executable "$APPDIR/usr/bin/wup-thinserver" \
         --executable "$APPDIR/usr/bin/wup-thinserver-settings" \
         "${LOADER_ARGS[@]}" \
-        --custom-apprun "$OUTDIR/wup-thinserver-AppRun" \
+        --custom-apprun "$APPRUN_SRC" \
         --desktop-file "$APPDIR/usr/share/applications/wup-thinserver-settings.desktop" \
         --output appimage
 )
@@ -173,6 +176,7 @@ shopt -s nullglob
 produced=("$OUTDIR"/*.AppImage)
 [ "${#produced[@]}" -eq 1 ] || { ls -la "$OUTDIR"; echo "AppImage not produced" >&2; exit 1; }
 mv "${produced[0]}" "$OUTPUT"
+rm -rf "$APPDIR" "$APPRUN_SRC"
 log "appimage: $OUTPUT"
 sha256sum "$OUTPUT" > "$OUTPUT.sha256"
 cat "$OUTPUT.sha256"
