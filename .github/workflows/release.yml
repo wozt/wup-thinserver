@@ -72,7 +72,8 @@ jobs:
             debian:trixie bash -euo pipefail -c '
               apt-get update -qq
               apt-get install -y -qq $(grep -v "^#" provisioning/packages/build.txt | grep -v "^$") \
-                zip dpkg-dev file libgdk-pixbuf2.0-bin librsvg2-common
+                zip dpkg-dev file curl ca-certificates \
+                libgdk-pixbuf2.0-bin librsvg2-common
               export PATH="/usr/sbin:/sbin:$PATH"
               mkdir -p build/dist
               scripts/package-native.sh "$DEB_ARCH" "$TAG" build/dist
