@@ -27,3 +27,4 @@ __pycache__/
 # Pre-provisioned iwd WiFi profiles (secrets, never commit)
 /images/raspberry-pi/networks/
 images/raspberry-pi/wifi.conf
+tools/sdl-viewer/wup_view
