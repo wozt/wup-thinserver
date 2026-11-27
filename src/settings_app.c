@@ -814,7 +814,7 @@ static GtkWidget *sticks_frame(App *app) {
     g_signal_connect(app->left_mode, "changed", G_CALLBACK(stick_keys_visibility), app);
     g_signal_connect(app->right_mode, "changed", G_CALLBACK(stick_keys_visibility), app);
     app->deadzone = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 500, 10);
-    app->sensitivity = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 50, 1);
+    app->sensitivity = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 1, 100, 1);
     gtk_scale_set_value_pos(GTK_SCALE(app->deadzone), GTK_POS_RIGHT);
     gtk_scale_set_value_pos(GTK_SCALE(app->sensitivity), GTK_POS_RIGHT);
     app->invert_y = gtk_check_button_new_with_label("Invert vertical axes");

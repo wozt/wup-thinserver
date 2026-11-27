@@ -199,7 +199,7 @@ settings_t *settings_load(void) {
         s->input.mode = json_int(in, "mode", s->input.mode);
         s->input.deadzone = json_int(in, "deadzone", s->input.deadzone);
         s->input.sensitivity = json_int(in, "sensitivity", s->input.sensitivity);
-        if (s->input.sensitivity > 50) s->input.sensitivity = 50;   /* legacy 1-400 scale */
+        if (s->input.sensitivity > 100) s->input.sensitivity = 100;  /* legacy 1-400 scale */
         s->input.invert_y = json_int(in, "invert_y", 0);
         s->input.gyro_mode = json_int(in, "gyro_mode", s->input.gyro_mode);
         s->input.gyro_sens = json_int(in, "gyro_sens", s->input.gyro_sens);

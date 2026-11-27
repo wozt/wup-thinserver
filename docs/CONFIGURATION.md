@@ -53,7 +53,7 @@ valid file unchanged.
 |---|---|
 | `mode` | `0` = virtual evdev Gamepad (`/dev/uinput`), `1` = XTest Desktop keyboard/mouse (**default**, required for Onboard typing). Settings applies this live. |
 | `deadzone` | Stick deadzone in raw units (default 120, max ~±1100) |
-| `sensitivity` | Pointer/stick speed, 0–50 (default 25); legacy values >50 clamp to 50 |
+| `sensitivity` | Pointer/stick speed, 1–100 (default 25); legacy values >100 clamp to 100 |
 | `invert_y` | Invert stick Y |
 | `gyro_mode` / `gyro_sens` / `gyro_bias` | Gyro→mouse/stick, sensitivity, calibrated bias |
 | `touch_as_mouse` | Touchscreen → pointer gestures (tap/drag/scroll/right-click) |
