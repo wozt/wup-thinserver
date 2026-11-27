@@ -1,0 +1,18 @@
+# wifi.conf — local Wi-Fi credentials for Raspberry Pi image builds.
+#
+# This file is GIT-IGNORED: personal credentials must never be committed
+# or reach CI. Copy this example to wifi.conf and fill in real values:
+#
+#   cp images/raspberry-pi/wifi.conf.example images/raspberry-pi/wifi.conf
+#
+# The build bakes the network into the image as an iwd profile
+# (/var/lib/iwd/<SSID>.psk). Alternatively set WUP_WIFI_SSID/WUP_WIFI_PSK
+# in the environment, or drop hand-written iwd profiles (*.psk, *.open,
+# *.8021x) into images/raspberry-pi/networks/ (also git-ignored).
+#
+# For post-flash configuration without rebuilding, see
+# provisioning/firstboot/wup-firstboot.conf.example (wifi_ssid/wifi_psk on
+# the BOOT partition).
+
+ssid=MyNetworkName
+psk=secret-passphrase

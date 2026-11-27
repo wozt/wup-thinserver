@@ -16,8 +16,9 @@ image:
 layer:
   admin: device-user-admin
   thinserver: wup-thinserver
+  iwd: iwd
 
 ssh:
   pubkey_user1: $(cat ${@SRCROOT}/admin-key.pub)
-  pubkey_only: y
+  pubkey_only: n
 

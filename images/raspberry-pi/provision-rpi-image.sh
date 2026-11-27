@@ -41,9 +41,33 @@ KERNEL=="video[0-9]*", ATTR{name}=="Wii U GamePad Camera", GROUP="video", MODE="
 EOF
 printf '%s\n' uinput > /etc/modules-load.d/wup-thinserver-gamepad.conf
 
+# Pre-provisioned WiFi networks (headless setup): iwd reads known-network
+# profiles from /var/lib/iwd/<SSID>.{psk,open,8021x}; networkd already runs
+# DHCP on wlan0, iwd only performs association. Profiles are staged by
+# build-rpi-image.sh under /opt/wup/networks/.
+if [ -d /opt/wup/networks ]; then
+    install -d -m 0700 -o root -g root /var/lib/iwd
+    for profile in /opt/wup/networks/*.psk /opt/wup/networks/*.open /opt/wup/networks/*.8021x; do
+        [ -f "$profile" ] || continue
+        install -m 0600 -o root -g root "$profile" "/var/lib/iwd/$(basename "$profile")"
+    done
+fi
+
 # No physical desktop or display manager. The single native service owns its
 # Xvfb/XFCE/PulseAudio session. Console and SSH administration remain usable.
 systemctl mask display-manager.service lightdm.service 2>/dev/null || true
+
+# Headless first-boot configuration: wup-firstboot reads
+# /boot/firmware/wup-firstboot.conf (the FAT32 BOOT partition, editable from
+# any PC after flashing — the rpi-image-gen equivalent of Raspberry Pi
+# Imager OS customization) and applies Wi-Fi credentials, passwords and
+# hostname before networking comes up.
+install -m 0755 /opt/wup/firstboot/wup-firstboot /usr/local/sbin/wup-firstboot
+install -m 0644 /opt/wup/firstboot/wup-firstboot.service \
+    /etc/systemd/system/wup-firstboot.service
+install -m 0644 /opt/wup/firstboot/wup-firstboot.conf.example \
+    /boot/firmware/wup-firstboot.conf.example
+systemctl enable wup-firstboot.service
 
 if [ "$PROFILE" = zero2w ]; then
     # A real reduced-memory profile: no compositing and no optional discovery,

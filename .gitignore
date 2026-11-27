@@ -23,3 +23,7 @@ __pycache__/
 /var/
 /test-artifacts/
 .env
+
+# Pre-provisioned iwd WiFi profiles (secrets, never commit)
+/images/raspberry-pi/networks/
+images/raspberry-pi/wifi.conf

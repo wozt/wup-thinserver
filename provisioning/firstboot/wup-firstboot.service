@@ -1,0 +1,13 @@
+[Unit]
+Description=WUP ThinServer first-boot configuration from the BOOT partition
+Documentation=man:iwd.network(5)
+After=local-fs.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wup-firstboot
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

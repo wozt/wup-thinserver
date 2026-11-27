@@ -62,9 +62,66 @@ build/images/rpi-admin-key
 ```
 
 The image set gets a build-local SSH key when one does not already exist. The
-`admin` and `wup` passwords remain locked; root login and password SSH are
-disabled. Preserve the private key securely or replace the public key in each
-prepared project before building.
+appliance baseline applies: `wup`/`wup` with sudo and `root`/`wup`; `admin`
+remains key-only for SSH. SSH is enabled by default **with password
+authentication** (`ssh wup@<ip>` works out of the box). Preserve the private
+key securely or replace the public key in each prepared project before
+building.
+
+## Headless networking and first-boot configuration
+
+Ethernet uses DHCP through systemd-networkd on both profiles. For Wi-Fi, the
+image carries the upstream rpi-image-gen `iwd` layer and pre-provisioned
+known-network profiles in `/var/lib/iwd/`: iwd performs association while
+networkd keeps owning DHCP on `wlan0`.
+
+### Build-time Wi-Fi credentials (never committed)
+
+Personal Wi-Fi credentials must **never** be committed or reach CI. The
+local, git-ignored credentials file is `images/raspberry-pi/wifi.conf`
+(template: `wifi.conf.example`):
+
+```ini
+ssid=MyNetworkName
+psk=secret-passphrase
+```
+
+Build with it in place:
+
+```sh
+./scripts/build-rpi-image.sh pi4
+```
+
+`WUP_WIFI_SSID`/`WUP_WIFI_PSK` environment variables override `wifi.conf`.
+For hand-written or multiple networks, drop iwd profiles (`*.psk`, `*.open`,
+`*.8021x`) into `images/raspberry-pi/networks/` — also git-ignored. The `.psk`
+format is documented in `iwd.network(5)`; the profile filename must be the
+SSID itself when it only contains `[A-Za-z0-9_-]`, otherwise `=` followed by
+the lowercase hex encoding of the SSID.
+
+### Post-flash configuration (Raspberry Pi Imager equivalent)
+
+The FAT32 BOOT partition ships `wup-firstboot.conf.example`. Copy it as
+`wup-firstboot.conf` on that partition from any PC and edit — the
+`wup-firstboot.service` applies it on boot and re-applies it whenever the
+file changes:
+
+```ini
+wifi_ssid=MyNetworkName
+wifi_psk=secret-passphrase
+password=new-wup-password
+root_password=new-root-password
+hostname=my-thinserver
+ssh=on
+ssh_password_auth=yes
+```
+
+This covers the headless case where no credentials file exists at build
+time: flash the image, add `wup-firstboot.conf` to the BOOT partition, boot.
+Note that Raspberry Pi Imager's own OS customization targets Raspberry Pi OS
+(dhcpcd/`wpa_supplicant.conf`/`userconf.txt`) and does **not** apply to this
+Debian image — `wup-firstboot.conf` is the supported equivalent. CI builds
+must never contain personal Wi-Fi credentials.
 
 ## Profiles
 

@@ -1,0 +1,26 @@
+# wup-firstboot.conf — headless first-boot configuration.
+#
+# Copy this file on the FAT32 BOOT partition (visible from any PC right
+# after flashing the SD card) as "wup-firstboot.conf" and edit it. The
+# wup-firstboot service applies it on boot and re-applies it whenever the
+# file changes — it is the rpi-image-gen equivalent of Raspberry Pi Imager
+# OS customization.
+#
+# Lines are KEY=VALUE; '#' starts a comment. Empty values are ignored.
+
+# Wi-Fi network (WPA-PSK). wifi_psk accepts a passphrase or a 64-char hex
+# PreSharedKey. Omit wifi_psk for an open network.
+# wifi_ssid=MyNetworkName
+# wifi_psk=secret-passphrase
+
+# Local account passwords (defaults: wup/wup and root/wup).
+# password=new-wup-password
+# root_password=new-root-password
+
+# System hostname.
+# hostname=wup-thinserver
+
+# SSH service (enabled by default with password authentication).
+# ssh=off disables it entirely; ssh_password_auth=no restricts it to keys.
+# ssh=on
+# ssh_password_auth=yes

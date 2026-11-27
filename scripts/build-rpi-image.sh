@@ -46,6 +46,7 @@ log "building the shared ARM64 application payload"
 
 mkdir -p "$PROJECT/config" "$PROJECT/layer" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup" \
+    "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/networks" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/scripts" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/packaging/systemd" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/prebuilt"
@@ -62,6 +63,60 @@ cp "$ROOT/scripts/install-native.sh" \
 chmod 0755 "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/scripts/install-native.sh"
 cp "$ROOT/packaging/systemd/wup-thinserver.service" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/packaging/systemd/"
+cp -a "$ROOT/provisioning/firstboot" \
+    "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/firstboot"
+
+# Headless WiFi provisioning. iwd known-network profiles live in
+# /var/lib/iwd/<SSID>.psk (or .open / .8021x) inside the image; networkd
+# already handles DHCP on wlan0. Sources, in order:
+#   1. images/raspberry-pi/wifi.conf (KEY=VALUE: ssid=, psk=) — the local,
+#      git-ignored credentials file; wifi.conf.example is the committed
+#      template. WUP_WIFI_SSID/WUP_WIFI_PSK env vars override it.
+#   2. any *.psk / *.open / *.8021x files in images/raspberry-pi/networks/
+#      (git-ignored, for hand-written or multiple networks)
+# Personal Wi-Fi credentials must NEVER be committed: they are consumed
+# locally at image build time and CI builds must not contain them.
+NETWORKS_DIR="$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/networks"
+WIFI_CONF="$ROOT/images/raspberry-pi/wifi.conf"
+CONF_SSID="" CONF_PSK=""
+if [ -f "$WIFI_CONF" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        # Only full-line comments; '#' may legitimately appear in values.
+        case "$line" in ''|\#*) continue ;; esac
+        case "$line" in
+            ssid=*) CONF_SSID="${line#ssid=}" ;;
+            psk=*)  CONF_PSK="${line#psk=}" ;;
+        esac
+    done < "$WIFI_CONF"
+    CONF_SSID="$(printf '%s' "$CONF_SSID" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    CONF_PSK="$(printf '%s' "$CONF_PSK" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+fi
+WIFI_SSID="${WUP_WIFI_SSID:-$CONF_SSID}"
+WIFI_PSK="${WUP_WIFI_PSK:-$CONF_PSK}"
+if [ -n "$WIFI_SSID" ]; then
+    [ -n "$WIFI_PSK" ] || die "Wi-Fi SSID set but PSK missing (wifi.conf or WUP_WIFI_PSK)"
+    SSID="$WIFI_SSID"
+    # iwd filenames: SSIDs limited to [A-Za-z0-9_-] keep their name, others
+    # are '=' followed by the lowercase hex encoding of the SSID.
+    if [[ "$SSID" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        IWD_NAME="$SSID.psk"
+    else
+        IWD_NAME="=$(printf '%s' "$SSID" | od -An -tx1 | tr -d ' \n').psk"
+    fi
+    # iwd.network(5): leading spaces, \n, \r and literal backslashes must be
+    # backslash-escaped inside values.
+    ESCAPED_PSK="$(printf '%s' "$WIFI_PSK" | sed -e 's/\\/\\\\/g')"
+    printf '[Security]\nPassphrase=%s\n' "$ESCAPED_PSK" \
+        > "$NETWORKS_DIR/$IWD_NAME"
+    chmod 0600 "$NETWORKS_DIR/$IWD_NAME"
+    log "WiFi profile baked: SSID '$SSID' -> $IWD_NAME"
+fi
+if [ -d "$ROOT/images/raspberry-pi/networks" ]; then
+    find "$ROOT/images/raspberry-pi/networks" -maxdepth 1 -type f \
+        \( -name '*.psk' -o -name '*.open' -o -name '*.8021x' \) \
+        -exec cp {} "$NETWORKS_DIR/" \;
+fi
 
 KEY="$OUTDIR/rpi-admin-key"
 if [ ! -f "$KEY" ]; then
