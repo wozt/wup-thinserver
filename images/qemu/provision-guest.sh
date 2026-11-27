@@ -23,6 +23,9 @@ if ! id wup >/dev/null 2>&1; then
     useradd -m -s /bin/bash wup
     LOG "created user wup"
 fi
+# Baseline appliance accounts: wup/wup in sudo, root/wup.
+printf 'wup:wup\nroot:wup\n' | chpasswd
+usermod -aG sudo wup
 mkdir -p /home/wup/.config/wup-thinserver /tmp/pulse-runtime /tmp/xdg-runtime
 chown -R wup:wup /home/wup /tmp/pulse-runtime /tmp/xdg-runtime
 chmod 700 /tmp/pulse-runtime /tmp/xdg-runtime

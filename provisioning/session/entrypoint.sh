@@ -7,14 +7,14 @@
 #             Onboard, wup-thinserver daemon.
 #
 # Account provisioning (root phase, idempotent, runs on every start):
+#   Baseline appliance accounts: `wup`/`wup` with sudo, `root`/`wup`.
 #   WUP_PASSWORD        plaintext password for `wup` (env only; prefer
 #                       WUP_PASSWORD_HASH or `wup-set-password`). Never
-#                       logged. If neither is set the account keeps its
-#                       locked password ('!' in /etc/shadow): console
-#                       login and sudo stay disabled.
+#                       logged. Overrides the baseline `wup` password.
 #   WUP_PASSWORD_HASH   a crypt(3) hash ('openssl passwd -6 ...') applied
 #                       with usermod -p.
-#   WUP_SUDO=1          add `wup` to the sudo group.
+#   WUP_ROOT_PASSWORD   root password (default `wup`).
+#   WUP_SUDO=0          keep `wup` out of the sudo group (default: member).
 #   WUP_SUDO_NOPASSWD=1  passwordless sudo inside the container only
 #                       (documented convenience; the container is the
 #                       isolation boundary, not the host).
@@ -32,9 +32,10 @@ if [ "$(id -u)" = "0" ]; then
         echo "[wup-thin] wup password set from WUP_PASSWORD"
         unset WUP_PASSWORD
     else
-        echo "[wup-thin] no WUP_PASSWORD(_HASH): 'wup' account stays locked"
+        printf 'wup:wup\n' | chpasswd
     fi
-    if [ "${WUP_SUDO:-0}" = "1" ]; then
+    printf 'root:%s\n' "${WUP_ROOT_PASSWORD:-wup}" | chpasswd
+    if [ "${WUP_SUDO:-1}" = "1" ]; then
         usermod -aG sudo wup
         echo "[wup-thin] wup added to the sudo group"
     fi

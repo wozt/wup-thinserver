@@ -39,3 +39,8 @@ libsdl2-2.0-0
 polkitd
 pkexec
 sudo
+fastfetch
+vlc
+screen
+byobu
+btop

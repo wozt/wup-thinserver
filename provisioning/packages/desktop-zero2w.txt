@@ -31,4 +31,10 @@ python3-gi
 gir1.2-gtk-3.0
 libglib2.0-bin
 libsdl2-2.0-0
+sudo
+fastfetch
+vlc
+screen
+byobu
+btop
 

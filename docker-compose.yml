@@ -44,15 +44,18 @@ services:
       KEYBOARD_VARIANT: ${KEYBOARD_VARIANT:-}
       LOCALE: ${LOCALE:-C.UTF-8}
       WUP_THIN_CONFIG: /home/wup/.config/wup-thinserver/settings.json
-      # Account provisioning (all optional; see docs/INSTALLATION.md):
-      #   WUP_PASSWORD / WUP_PASSWORD_HASH — set the `wup` login password
-      #   WUP_SUDO=1                  — add wup to the sudo group
-      #   WUP_SUDO_NOPASSWD=1        — passwordless sudo in-container
+      # Account provisioning (all optional; see docs/INSTALLATION.md).
+      # Baseline: wup/wup in sudo, root/wup — env vars override:
+      #   WUP_PASSWORD / WUP_PASSWORD_HASH — custom `wup` password
+      #   WUP_ROOT_PASSWORD              — custom root password (default wup)
+      #   WUP_SUDO=0                     — keep wup out of the sudo group
+      #   WUP_SUDO_NOPASSWD=1            — passwordless sudo in-container
       # Prefer a .env file or `docker exec -u root ... wup-set-password`;
       # never commit real passwords.
       WUP_PASSWORD: ${WUP_PASSWORD:-}
       WUP_PASSWORD_HASH: ${WUP_PASSWORD_HASH:-}
-      WUP_SUDO: ${WUP_SUDO:-0}
+      WUP_ROOT_PASSWORD: ${WUP_ROOT_PASSWORD:-}
+      WUP_SUDO: ${WUP_SUDO:-1}
       WUP_SUDO_NOPASSWD: ${WUP_SUDO_NOPASSWD:-0}
       ONBOARD_DOCK_HEIGHT: ${ONBOARD_DOCK_HEIGHT:-190}
       ONBOARD_LAYOUT: ${ONBOARD_LAYOUT:-}

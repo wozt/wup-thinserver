@@ -41,11 +41,13 @@ desktop-user shell, `-u root` for administration.
   terminal prompt `wup@wup-thinserver:~$`). Override with `THIN_HOSTNAME` in
   `.env`. The host machine's hostname is untouched.
 - The desktop user is **`wup`** with home `/home/wup` (persistent volume).
-- By default the account has a **locked password**: no console login, no
-  sudo. The remote desktop does not need it — the GamePad is the only
-  intended input path.
+- Baseline appliance accounts: **`wup`/`wup`** (member of `sudo`) and
+  **`root`/`wup`**. This applies to every image — Docker, QEMU and the Pi
+  builds — so a fresh device is console-accessible out of the box.
+  Override per deployment with `WUP_PASSWORD` / `WUP_PASSWORD_HASH` /
+  `WUP_ROOT_PASSWORD` / `WUP_SUDO=0`.
 
-Set a password (pick one):
+Change the password (pick one):
 
 ```sh
 # a) one-shot env (not persisted across `down`; use .env to persist)
@@ -63,7 +65,7 @@ Optional in-container sudo (does **not** affect the host; the container is
 the isolation boundary):
 
 ```sh
-# .env: WUP_SUDO=1            -> wup in the sudo group (sudo asks the password)
+# .env: WUP_SUDO=0            -> keep wup out of the sudo group
 #      WUP_SUDO_NOPASSWD=1    -> passwordless sudo inside the container only
 docker compose up -d
 ```
@@ -235,8 +237,10 @@ ffmpeg -f x11grab -video_size 1280x720 -i :99 -frames:v 1 /tmp/shot.png
   `provisioning/session/entrypoint.sh`),
 - installs and enables `packaging/systemd/wup-thinserver.service`,
 - adds a desktop launcher/icon,
-- never touches the host user's existing desktop or X session, and
-  never sets a default password.
+- never touches the host user's existing desktop or X session.
+
+Baseline accounts are `wup`/`wup` (sudo member) and `root`/`wup`; pass
+`--password` to set a different password for `wup` interactively.
 
 The desktop starts automatically at boot on a virtual display — no
 monitor, display manager or login is required. Run it on a dedicated

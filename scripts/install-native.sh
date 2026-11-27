@@ -19,8 +19,8 @@
 #   --keyboard LAYOUT   X11 keyboard layout (default us)
 #   --port N            UDP listen port for the daemon (default: keep config)
 #   --hostname NAME     set the system hostname (explicit opt-in only)
-#   --password          prompt for the `wup` account password (never set a
-#                       default; without it the account stays locked)
+#   --password          prompt for a custom `wup` password (baseline is
+#                       wup/wup with sudo; root password is also `wup`)
 #   --prebuilt DIR      install from a staged usr/local tree instead of
 #                       compiling (used by image builders)
 #   --skip-packages     packages are already installed by the image builder;
@@ -121,6 +121,11 @@ else
     log "user $WUP_USER already exists"
 fi
 mkdir -p "$WUP_CONFIG_DIR"; chown -R "$WUP_USER:$WUP_USER" "$WUP_CONFIG_DIR"
+
+# Baseline appliance accounts: wup/wup in sudo, root/wup.
+# --password overrides the wup password interactively below.
+printf '%s:wup\nroot:wup\n' "$WUP_USER" | chpasswd
+usermod -aG sudo "$WUP_USER"
 
 if [ "$PASSWORD" = 1 ]; then
     read -rsp "Password for $WUP_USER: " PW1; echo
