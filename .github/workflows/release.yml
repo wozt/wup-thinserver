@@ -304,10 +304,10 @@ jobs:
     # a cancellation must not publish an incomplete release.
     if: >-
       always() && needs.detect.result == 'success' &&
-      !contains(needs.native.result + ',' + needs.docker.result + ',' +
-                needs['pi-debian'].result + ',' + needs['pi-pios'].result, 'failure') &&
-      !contains(needs.native.result + ',' + needs.docker.result + ',' +
-                needs['pi-debian'].result + ',' + needs['pi-pios'].result, 'cancelled')
+      needs.native.result != 'failure' && needs.native.result != 'cancelled' &&
+      needs.docker.result != 'failure' && needs.docker.result != 'cancelled' &&
+      needs['pi-debian'].result != 'failure' && needs['pi-debian'].result != 'cancelled' &&
+      needs['pi-pios'].result != 'failure' && needs['pi-pios'].result != 'cancelled'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
