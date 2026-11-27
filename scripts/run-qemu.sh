@@ -2,7 +2,7 @@
 # run-qemu.sh — launch the ARM64 ThinServer VM (headless).
 #
 # Profiles:
-#   (default)   functional: 4 vCPU, 4 GiB, virt machine, software x264
+#   (default)   functional: 6 vCPU, 8 GiB, virt machine, software x264
 #   --profile pi4      Raspberry Pi 4 approximation: cortex-a72, 4 vCPU, 2 GiB
 #   --profile zero2w   Raspberry Pi Zero 2 W approximation: cortex-a53,
 #                      4 vCPU, 512 MiB (reduced footprint)
@@ -44,7 +44,7 @@ fi
 [ -f "$SEED" ] || { echo "missing seed $SEED — run scripts/build-qemu-image.sh" >&2; exit 1; }
 
 case "$PROFILE" in
-    func)   CPU=cortex-a72; MEM="${WUP_QEMU_MEM:-4G}"; CPUS="${WUP_QEMU_CPUS:-4}";;
+    func)   CPU=cortex-a72; MEM="${WUP_QEMU_MEM:-8G}"; CPUS="${WUP_QEMU_CPUS:-6}";;
     pi4)    CPU=cortex-a72; MEM="${WUP_QEMU_MEM:-2G}"; CPUS="${WUP_QEMU_CPUS:-4}";;
     zero2w) CPU=cortex-a53; MEM="${WUP_QEMU_MEM:-512M}"; CPUS="${WUP_QEMU_CPUS:-4}";;
     *) echo "unknown profile $PROFILE" >&2; exit 2;;

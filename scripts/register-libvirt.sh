@@ -21,6 +21,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NAME=wup-thinserver-arm64
 IMG="$ROOT/build/images/wup-thinserver-qemu-arm64.qcow2"
 SEED="$ROOT/build/images/seed.img"
+MEM_MIB="${WUP_QEMU_MEM_MIB:-8192}"   # TCG guest: more RAM eases desktop pressure
+VCPUS="${WUP_QEMU_VCPUS:-6}"          # encode is single-threaded; extra vCPUs help capture/desktop
 VARS_TPL=/usr/share/AAVMF/AAVMF_VARS.fd
 CODE=/usr/share/AAVMF/AAVMF_CODE.fd
 VARS="$ROOT/build/run/libvirt-AAVMF_VARS.fd"
@@ -65,9 +67,9 @@ mkdir -p "$ROOT/build/run"
 cat > "$XML" <<EOF
 <domain type='qemu'>   <!-- TCG: no ARM64 KVM on this x86_64 host -->
   <name>$NAME</name>
-  <memory unit='KiB'>4194304</memory>
-  <currentMemory unit='KiB'>4194304</currentMemory>
-  <vcpu placement='static'>4</vcpu>
+  <memory unit='KiB'>$((MEM_MIB * 1024))</memory>
+  <currentMemory unit='KiB'>$((MEM_MIB * 1024))</currentMemory>
+  <vcpu placement='static'>$VCPUS</vcpu>
   <os>
     <type arch='aarch64' machine='virt'>hvm</type>
     <loader readonly='yes' type='pflash'>$CODE</loader>
@@ -76,7 +78,7 @@ cat > "$XML" <<EOF
   </os>
   <cpu mode='custom' match='exact'>
     <model>cortex-a72</model>
-    <topology sockets='1' dies='1' clusters='1' cores='4' threads='1'/>
+    <topology sockets='1' dies='1' clusters='1' cores='$VCPUS' threads='1'/>
   </cpu>
   <features>
     <acpi/>

@@ -58,7 +58,7 @@ recreates it — back it up first if it holds state you want).
 ## Launch
 
 ```sh
-./scripts/run-qemu.sh                 # functional profile: 4 vCPU, 4 GiB
+./scripts/run-qemu.sh                 # functional profile: 6 vCPU, 8 GiB
 ./scripts/run-qemu.sh --profile pi4   # cortex-a72, 4 vCPU, 2 GiB
 ./scripts/run-qemu.sh --profile zero2w# cortex-a53, 4 vCPU, 512 MiB
 ./scripts/stop-qemu.sh                # graceful QMP shutdown
@@ -90,8 +90,10 @@ Two launch modes are supported:
 ### libvirt / Virt-Manager (default, bridged)
 
 `scripts/register-libvirt.sh` defines the domain `wup-thinserver-arm64`
-on `qemu:///system` with a `type='bridge'` interface on **`br0`**. The
-guest's virtio NIC gets its own LAN address via DHCP — no NAT, no port
+on `qemu:///system` with a `type='bridge'` interface on **`br0`**.
+Defaults: 8 GiB RAM, 6 vCPU cortex-a72, aarch64 TCG (override with
+`WUP_QEMU_MEM_MIB` / `WUP_QEMU_VCPUS`). The guest's virtio NIC gets its
+own LAN address via DHCP — no NAT, no port
 forwarding. The host NIC (`enp42s0`) must be enslaved to `br0` with the
 host IP moved onto the bridge (NetworkManager example):
 
