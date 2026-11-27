@@ -85,6 +85,23 @@ install_data('scripts/install-desktop-shortcut.sh',
   rename: 'wup-install-desktop-shortcut',
   install_mode: 'rwxr-xr-x')
 
+# Session helpers shared by the Docker image and the native installer:
+# everything lands under $(bindir) so `meson install` produces a complete
+# /usr/local tree for both deployment paths.
+foreach h : [
+    ['provisioning/session/entrypoint.sh', 'wup-thin-entrypoint'],
+    ['scripts/onboard-toggle.sh', 'onboard-toggle'],
+    ['scripts/onboard-setup.sh', 'onboard-setup'],
+    ['scripts/migrate-settings.py', 'wup-migrate-settings'],
+    ['scripts/wup-set-password.sh', 'wup-set-password'],
+    ['scripts/gamepad-devd.sh', 'wup-gamepad-devd'],
+  ]
+  install_data(h[0],
+    install_dir: get_option('bindir'),
+    rename: h[1],
+    install_mode: 'rwxr-xr-x')
+endforeach
+
 # --- tests ------------------------------------------------------------------
 cap_test = executable('wup-capture-test',
   'tests/capture_test.c',

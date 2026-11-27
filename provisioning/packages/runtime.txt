@@ -1,0 +1,23 @@
+# Runtime library dependencies of the compiled binaries
+# (mirrors the Docker runtime stage).
+ca-certificates
+libglib2.0-0
+libx11-6
+libxrandr2
+libxtst6
+libxext6
+libxfixes3
+libxinerama1
+libxcb1
+libxcb-shm0
+libx11-xcb1
+libpulse0
+libcairo2
+libpangocairo-1.0-0
+libjson-glib-1.0-0
+libgtk-3-0
+libswscale8
+libdrm2
+libgbm1
+libegl1
+libgles2

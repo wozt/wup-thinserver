@@ -1,0 +1,32 @@
+[Unit]
+# WUP ThinServer streamed desktop session.
+#
+# The whole remote desktop lives in this one supervised unit: private
+# D-Bus, Xvfb, PulseAudio null sink, XFCE, Onboard and the streaming
+# daemon, in that order, all as the unprivileged `wup` user. Ordering and
+# readiness are handled inside provisioning/session/entrypoint.sh; the
+# unit only provides supervision, restart and logging. The desktop stays
+# up when the GamePad disconnects; the daemon exiting ends the session
+# (same lifecycle as the Docker deployment).
+Description=WUP ThinServer streamed desktop (Xvfb + XFCE + daemon)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wup
+Group=wup
+Environment=HOME=/home/wup
+# Tunables (also settable via a systemd drop-in override):
+#   DESKTOP_WIDTH / DESKTOP_HEIGHT  virtual display resolution
+#   DISPLAY_NUM                     X display number (default 99)
+#   KEYBOARD_LAYOUT / KEYBOARD_VARIANT
+#   WUP_THIN_CONFIG                 daemon settings.json path
+ExecStart=/usr/local/bin/wup-thin-entrypoint --session
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+# No graphical login, no physical display needed: the desktop is virtual.
+
+[Install]
+WantedBy=multi-user.target

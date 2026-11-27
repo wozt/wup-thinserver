@@ -1,0 +1,31 @@
+# Build dependencies for compiling wup-thinserver + wup-thinserver-settings
+# from source (Debian 13, amd64 and arm64). Mirrors the Docker builder stage.
+build-essential
+meson
+ninja-build
+pkg-config
+python3
+git
+make
+ca-certificates
+libglib2.0-dev
+libx11-dev
+libxrandr-dev
+libxtst-dev
+libxext-dev
+libxfixes-dev
+libxinerama-dev
+libxcb1-dev
+libxcb-shm0-dev
+libx11-xcb-dev
+libpulse-dev
+libcairo2-dev
+libpango1.0-dev
+libjson-glib-dev
+libgtk-3-dev
+libswscale-dev
+libdrm-dev
+libgbm-dev
+libegl-dev
+libgles-dev
+nasm

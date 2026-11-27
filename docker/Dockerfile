@@ -88,23 +88,9 @@ RUN useradd -m -u 1000 -s /bin/bash wup \
     && mkdir -p /home/wup/.config/wup-thinserver \
     && chown -R wup:wup /home/wup
 
-# Daemon, settings application, desktop metadata and shared data.
+# Daemon, settings application, desktop metadata, session entrypoint and
+# helper scripts — all installed by `meson install` into /out/usr/local.
 COPY --from=builder /out/usr/local/ /usr/local/
-COPY scripts/onboard-toggle.sh /usr/local/bin/onboard-toggle
-COPY scripts/onboard-setup.sh /usr/local/bin/onboard-setup
-COPY scripts/install-desktop-shortcut.sh /usr/local/bin/wup-install-desktop-shortcut
-COPY scripts/migrate-settings.py /usr/local/bin/wup-migrate-settings
-COPY scripts/wup-set-password.sh /usr/local/bin/wup-set-password
-COPY scripts/gamepad-devd.sh /usr/local/bin/wup-gamepad-devd
-RUN chmod 755 /usr/local/bin/onboard-toggle /usr/local/bin/onboard-setup \
-        /usr/local/bin/wup-install-desktop-shortcut \
-        /usr/local/bin/wup-migrate-settings /usr/local/bin/wup-set-password \
-        /usr/local/bin/wup-gamepad-devd
-
-# Entrypoint: starts as root for account provisioning, then drops to the
-# unprivileged `wup` user via setpriv for the whole desktop session.
-COPY docker/entrypoint.sh /usr/local/bin/wup-thin-entrypoint
-RUN chmod 755 /usr/local/bin/wup-thin-entrypoint
 
 # State dirs the session needs, owned by wup.
 RUN mkdir -p /tmp/pulse-runtime /tmp/xdg-runtime \
