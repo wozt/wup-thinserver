@@ -115,3 +115,35 @@ on the same LAN as the server.
       (Milestone 6 — nothing is claimed until measured).
 
 Never mark an item validated without running it on physical hardware.
+
+## QEMU ARM64 appliance
+
+`scripts/build-qemu-image.sh` builds the image; `scripts/run-qemu.sh`
+boots it headless (TCG). Validation checklist:
+
+```sh
+./scripts/build-qemu-image.sh
+./scripts/run-qemu.sh            # or: --profile pi4 | zero2w
+# wait for provisioning (first boot installs the desktop stack; slow under TCG)
+./scripts/qemu-console.sh        # serial console if needed
+./scripts/stop-qemu.sh           # graceful QMP shutdown
+```
+
+Guest checks (SSH `ssh -i build/images/qemu-admin-key -p 2222 admin@127.0.0.1`,
+or `sudo -iu wup` inside):
+
+- `uname -m` → `aarch64`; `systemctl status wup-thinserver` → active
+- Xvfb/XFCE/Onboard/PulseAudio running as `wup`
+- `xwd -root -display :99 | convert xwd:- shot.png` for a desktop screenshot
+
+Stream validation through the forwarded endpoint (host UDP 5080 → guest
+50001):
+
+```sh
+python3 tools/nat-lab/fake_pad.py --server 127.0.0.1 --port 5080 \
+    --seconds 30 --send-t --send-n --keyframe
+```
+
+Expected: H reply from `127.0.0.1:5080`, V/A media, T ack, N handling,
+clean disconnect. Persistence: reboot and confirm `/home/wup` files and
+`settings.json` survive; the service must come back automatically.

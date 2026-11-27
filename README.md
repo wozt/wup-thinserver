@@ -81,6 +81,16 @@ and are saved without restarting the daemon, stream, XFCE, or container. See
 [the settings application](docs/SETTINGS_APPLICATION.md) and
 [local control protocol](docs/CONTROL_IPC.md).
 
+### QEMU ARM64 appliance
+
+A reproducible headless Debian 13 ARM64 VM image is available for
+lab/validation use (see [docs/QEMU.md](docs/QEMU.md)):
+
+```sh
+./scripts/build-qemu-image.sh   # cross-build + cloud image + cloud-init
+./scripts/run-qemu.sh           # headless; UDP host:5080 -> guest:50001
+```
+
 ### Native build (Debian 13 / compatible)
 
 Prerequisites: `meson ninja-build pkg-config gcc` plus the X11/XCB,

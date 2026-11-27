@@ -48,3 +48,22 @@ Onboard, Thunar, Mousepad, XFCE Terminal, PulseAudio and fonts.
 
 The WUP ThinClient homebrew is built in the `wup-thinclient` repository with
 the libwup toolchain; see its `docs/BUILD.md`.
+
+## ARM64 cross-build
+
+`scripts/build-arm64.sh` cross-compiles the daemon, settings app and the
+patched libwupstream/x264 stack for aarch64 using
+`packaging/cross/aarch64-linux-gnu.ini` and the `aarch64-linux-gnu-*`
+toolchain (gcc-aarch64-linux-gnu plus the `:arm64` -dev libraries listed
+in `provisioning/packages/build-arm64.txt`).
+
+```sh
+./scripts/build-arm64.sh           # -> build-arm64/wup-thinserver(+ -settings)
+qemu-aarch64-static /lib/ld-linux-aarch64.so.1 \
+    ./build-arm64/wup-thinserver --help
+```
+
+Output binaries are plain `ELF aarch64` executables; verify with
+`file build-arm64/wup-thinserver`. The QEMU image builder
+(`scripts/build-qemu-image.sh`) reuses this cross-build to produce the
+appliance payload.

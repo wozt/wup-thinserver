@@ -86,8 +86,17 @@ performance measurement, native install, Raspberry Pi).
 
 ## PC client, ARM64 and appliances
 
-- [ ] **Planned:** WUP ThinClient PC feasibility, automated laboratory,
-      native installer, QEMU ARM64, Raspberry Pi 4 and Zero 2 W images.
+- [~] **In progress:** WUP ThinClient PC feasibility, automated laboratory,
+      Raspberry Pi 4 and Zero 2 W images.
+- [x] **Native provisioning:** `provisioning/` shared package/session
+      sources, `scripts/install-native.sh` (idempotent, `wup` user,
+      systemd unit), Dockerfile slimmed to reuse them.
+- [x] **ARM64 cross-build:** `scripts/build-arm64.sh` + meson cross file;
+      aarch64 ELF binaries verified under qemu-user.
+- [~] **QEMU ARM64 appliance:** image builder + lifecycle scripts done;
+      `build/images/wup-thinserver-qemu-arm64.qcow2` boots Debian 13
+      arm64; in-guest provisioning and stream validation in progress.
+      See docs/QEMU.md.
 - **Known limitation:** GamePad raw-CABAC reconstruction for FFmpeg has not
   yet been demonstrated. QEMU results will not be treated as physical Pi
   performance or VideoCore compatibility evidence.
@@ -192,7 +201,7 @@ performance measurement, native install, Raspberry Pi).
       5080), full session (V/A/N/T) through NAT, strict
       address-and-port-dependent filtering, multi-client turn-taking.
 - [ ] **Pending:** NAT mapping-expiry timing tests, symmetric NAT,
-      secure WAN transport feasibility, native/QEMU ARM64 deployment,
+      secure WAN transport feasibility, QEMU in-guest validation,
       PC reference client, physical GamePad retest of the profile
       manager.
 

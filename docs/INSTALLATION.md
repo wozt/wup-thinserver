@@ -191,19 +191,41 @@ ffmpeg -f x11grab -video_size 1280x720 -i :99 -frames:v 1 /tmp/shot.png
 
 `x11vnc` can be added for interactive debugging (not installed by default).
 
-## Native installation (planned, Milestone 7)
+## Native installation (Debian 13 AMD64/ARM64)
 
-`scripts/install-native.sh` will:
+`scripts/install-native.sh` performs an idempotent native install:
 
-- create the `wup` session user,
-- install the same package set and desktop provisioning,
-- install a systemd user service `wup-thinserver.service` and a session
-  launcher `wup-thin-session.service`,
-- never touch the user's existing desktop or X session,
-- provide `wup-thin-uninstall.sh`.
+- builds and installs `wup-thinserver`, `wup-thinserver-settings`,
+  `wup-thin-entrypoint` and helper scripts into `/usr/local`,
+- creates the dedicated unprivileged `wup` user (home `/home/wup`),
+- installs the same package set and desktop provisioning used by the
+  Docker image (`provisioning/packages/*.txt`,
+  `provisioning/session/entrypoint.sh`),
+- installs and enables `packaging/systemd/wup-thinserver.service`,
+- adds a desktop launcher/icon,
+- never touches the host user's existing desktop or X session, and
+  never sets a default password.
 
-The desktop resolution is configured once (env `DESKTOP_WIDTH`,
-`DESKTOP_HEIGHT`, `DESKTOP_DEPTH`) and shared by Docker and native installs.
+The desktop starts automatically at boot on a virtual display — no
+monitor, display manager or login is required. Run it on a dedicated
+appliance or inside a VM; do not install it over an active workstation
+desktop you still use.
+
+```sh
+sudo ./scripts/install-native.sh          # defaults
+sudo ./scripts/install-native.sh --help   # all options
+sudo ./scripts/install-native.sh --uninstall
+```
+
+Tunables: desktop resolution (`DESKTOP_WIDTH`/`DESKTOP_HEIGHT`),
+listening port/address, keyboard layout, locale, optional virtual
+gamepad, persistent settings path. See docs/CONFIGURATION.md.
+
+## QEMU ARM64 appliance
+
+See [docs/QEMU.md](QEMU.md) — reproducible Debian 13 ARM64 cloud image
+with the same native provisioning, launched headless with UDP
+forwarding (`host:5080 -> guest:50001`) and an admin SSH forward.
 
 ## Security notes
 

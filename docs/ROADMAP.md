@@ -23,10 +23,17 @@ Status terms: **planned**, **in progress**, **implemented**,
 5. **SDL client and automated laboratory — planned.** Video/audio, viewport
    touch mapping, Xbox controller, headless scenarios, screenshots, measured
    diagnostics, and deterministic fault injection.
-6. **Native Debian installation — planned.** Shared provisioning and systemd
-   without modifying the host user's desktop.
-7. **QEMU ARM64 — planned.** Generic `virt` image first; emulation validates
-   function and memory pressure, never physical Raspberry Pi performance.
+6. **Native Debian installation — done (scripted).** `provisioning/`
+   shares package lists and the session entrypoint between Docker and
+   native; `scripts/install-native.sh` installs the daemon, settings app,
+   XFCE/Onboard stack and `wup-thinserver.service` for the unprivileged
+   `wup` user without touching the host desktop.
+7. **QEMU ARM64 — in progress.** `scripts/build-qemu-image.sh` produces
+   `build/images/wup-thinserver-qemu-arm64.qcow2` (Debian 13 genericcloud
+   arm64 + shared native provisioning via cloud-init); `run-qemu.sh`
+   launches headless profiles func/pi4/zero2w with UDP hostfwd 5080→50001
+   and SSH admin forward 2222→22. Emulation validates function only,
+   never physical Raspberry Pi performance.
 8. **Raspberry Pi 4 — planned.** Reproducible headless ARM64 image and physical
    validation; patched software x264 remains the known-compatible start.
 9. **Raspberry Pi Zero 2 W — planned / experimental.** 512 MiB profile and
