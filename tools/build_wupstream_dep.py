@@ -245,13 +245,28 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
             raise RuntimeError(f"Unexpected pinned source: {code}")
         text = text.replace(beacon_old, beacon_new, 1)
 
-    # keep the peer port fresh from every accepted session packet (NAT-safe)
+    # keep the peer port fresh only from validated session packets: an
+    # arbitrary datagram from the same IP must not redirect the session.
+    # 'B' is accepted too — it is the defined NAT-rebinding path (the pad
+    # re-beacons from its current source endpoint and the session resumes).
     pump_old = "        if (from.sin_addr.s_addr != w->pad.sin_addr.s_addr) continue;"
-    pump_new = (pump_old + "\n        w->pad.sin_port = from.sin_port;")
+    pump_new = pump_old + """
+        int peer_packet = (b[0] == 'B' && n >= 4) ||
+                          (b[0] == 'N' && n >= 2 && n >= 4 + 8 * b[1]) ||
+                          (b[0] == 'M' && n > 8) ||
+                          (b[0] == 'T' && n >= 4) ||
+                          (b[0] == 'I' && n == 136);
+        if (!peer_packet) continue;
+        w->pad.sin_port = from.sin_port;"""
+    # migrate the earlier unconditional variant if the cache already has it
+    stale = (pump_old + "\n        w->pad.sin_port = from.sin_port;")
     if pump_new not in text:
-        if text.count(pump_old) != 1:
+        if stale in text:
+            text = text.replace(stale, pump_new, 1)
+        elif text.count(pump_old) == 1:
+            text = text.replace(pump_old, pump_new, 1)
+        else:
             raise RuntimeError(f"Unexpected pinned source: {code}")
-        text = text.replace(pump_old, pump_new, 1)
 
     code.write_text(text)
 

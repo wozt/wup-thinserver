@@ -170,18 +170,30 @@ static int region_is_cleared(const settings_t *s) {
            (s->source.w <= 0 || s->source.h <= 0);
 }
 
+/* Consecutive-duplicate 'T' guard: the client increments reqid per
+   request, so an identical reqid arriving back-to-back is a retransmitted
+   datagram, not a new request. Re-ack the recorded outcome without
+   re-applying — required for 0xff toggles, which are not idempotent. */
+static int t_dup_reqid = -1, t_dup_status, t_dup_mode;
+
 /* WUP_THIN_PROTOCOL 'T': the pad asked for a live Desktop/Gamepad switch.
    The request carries an explicit mode (or 0xff = toggle the configured
-   one), so a duplicated datagram can never flip the mode twice. The ack
-   always reports the EFFECTIVE mode: a rejected Gamepad request leaves
-   Desktop active and the client must not claim otherwise. */
+   one); explicit requests are idempotent and duplicates are filtered by
+   reqid. The ack always reports the EFFECTIVE mode: a rejected Gamepad
+   request leaves Desktop active and the client must not claim otherwise. */
 static void pad_mode_request(server_t *srv, settings_t *s, input_ctx_t *ictx,
                              wupstream *pad, int reqid, int reqmode) {
+    if (reqid == t_dup_reqid) {
+        wupstream_control_reply(pad, reqid, t_dup_status, t_dup_mode);
+        return;
+    }
     int want = reqmode;
     if (want == 0xff)
         want = s->input.mode == INMODE_GAMEPAD ? INMODE_KBMOUSE : INMODE_GAMEPAD;
     if (want != INMODE_KBMOUSE && want != INMODE_GAMEPAD) {
-        wupstream_control_reply(pad, reqid, 2, ictx ? input_active_mode(ictx) : INMODE_KBMOUSE);
+        int eff = ictx ? input_active_mode(ictx) : INMODE_KBMOUSE;
+        t_dup_reqid = reqid; t_dup_status = 2; t_dup_mode = eff;
+        wupstream_control_reply(pad, reqid, 2, eff);
         return;
     }
     int rejected = 0;
@@ -224,6 +236,7 @@ static void pad_mode_request(server_t *srv, settings_t *s, input_ctx_t *ictx,
     pthread_mutex_unlock(&srv->mtx);
     settings_save(&persist);
     wupstream_set_input_mode(pad, active);
+    t_dup_reqid = reqid; t_dup_status = rejected ? 1 : 0; t_dup_mode = active;
     wupstream_control_reply(pad, reqid, rejected ? 1 : 0, active);
 }
 
@@ -270,6 +283,7 @@ static void *server_thread(void *arg) {
             usleep(2000000);
             continue;
         }
+        t_dup_reqid = -1;               /* new session: client reqids restart */
         unsigned long brightness_revision = s->pad_brightness_revision;
         int brightness_pending = 0;
         double brightness_deadline = 0;
