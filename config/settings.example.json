@@ -33,7 +33,7 @@
   "input": {
     "mode": 1,
     "deadzone": 120,
-    "sensitivity": 100,
+    "sensitivity": 25,
     "invert_y": 0,
     "gyro_mode": 0,
     "gyro_sens": 100,

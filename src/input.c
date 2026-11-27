@@ -497,29 +497,32 @@ static void kb_pointer(input_ctx_t *ctx, const settings_t *s, const wupstream_in
        A stick never emits keys here; stick_keys[] is a separate opt-in. */
     double sens = ic->sensitivity / 100.0;
     if (ctx->active_mode == INMODE_KBMOUSE) {
-        int lx = in->lx, ly = in->ly;
+        /* the report's stick Y axis is up-positive while screen Y is
+           down-positive: negate once here; invert_y still flips on top.
+           Gains are per-frame px/notch units — the sticks report ~±1900. */
+        int lx = in->lx, ly = -in->ly;
         if (abs(lx) < dz) lx = 0;
         if (abs(ly) < dz) ly = 0;
         if (ic->invert_y) ly = -ly;
         if (ic->left_stick_mouse) {
-            ctx->mx += lx * 0.9 * sens;
-            ctx->my += ly * 0.9 * sens;
+            ctx->mx += lx * 0.02 * sens;
+            ctx->my += ly * 0.02 * sens;
         }
-        int rx = in->rx, ry = in->ry;
+        int rx = in->rx, ry = -in->ry;
         if (abs(rx) < dz) rx = 0;
         if (abs(ry) < dz) ry = 0;
         if (ic->invert_y) ry = -ry;
         if (ic->right_stick_scroll) {
             /* accumulate fractional motion; one wheel click per ~28 units */
-            ctx->sx += rx * 0.9 * sens;
-            ctx->sy += ry * 0.9 * sens;
+            ctx->sx += rx * 0.01 * sens;
+            ctx->sy += ry * 0.01 * sens;
             while (ctx->sy > 28) { xtest_scroll(d, 4); ctx->sy -= 28; }
             while (ctx->sy < -28) { xtest_scroll(d, 5); ctx->sy += 28; }
             while (ctx->sx > 28) { xtest_scroll(d, 7); ctx->sx -= 28; }
             while (ctx->sx < -28) { xtest_scroll(d, 6); ctx->sx += 28; }
         } else if (ic->right_stick_mouse) {
-            ctx->mx += rx * 0.9 * sens;
-            ctx->my += ry * 0.9 * sens;
+            ctx->mx += rx * 0.02 * sens;
+            ctx->my += ry * 0.02 * sens;
         }
     }
     /* gyro -> mouse (both modes): px/frame = dps * px_per_s / 60 */

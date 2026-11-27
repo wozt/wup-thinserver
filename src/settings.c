@@ -73,7 +73,7 @@ void settings_defaults(settings_t *s) {
        virtual gamepad remains available via input.mode = 0. */
     s->input.mode = INMODE_KBMOUSE;
     s->input.deadzone = 120;
-    s->input.sensitivity = 100;
+    s->input.sensitivity = 25;
     s->input.gyro_mode = GYRO_OFF;
     s->input.gyro_sens = 100;
     s->input.touch_as_mouse = 1;
@@ -199,6 +199,7 @@ settings_t *settings_load(void) {
         s->input.mode = json_int(in, "mode", s->input.mode);
         s->input.deadzone = json_int(in, "deadzone", s->input.deadzone);
         s->input.sensitivity = json_int(in, "sensitivity", s->input.sensitivity);
+        if (s->input.sensitivity > 50) s->input.sensitivity = 50;   /* legacy 1-400 scale */
         s->input.invert_y = json_int(in, "invert_y", 0);
         s->input.gyro_mode = json_int(in, "gyro_mode", s->input.gyro_mode);
         s->input.gyro_sens = json_int(in, "gyro_sens", s->input.gyro_sens);

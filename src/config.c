@@ -21,8 +21,8 @@ const char *config_validate(const settings_t *s) {
         return "input.mode must be 0 (gamepad) or 1 (kb/mouse)";
     if (s->input.deadzone < 0 || s->input.deadzone > 500)
         return "input.deadzone must be between 0 and 500";
-    if (s->input.sensitivity < 1 || s->input.sensitivity > 400)
-        return "input.sensitivity must be between 1 and 400";
+    if (s->input.sensitivity < 0 || s->input.sensitivity > 50)
+        return "input.sensitivity must be between 0 and 50";
     if (s->input.gyro_mode < GYRO_OFF || s->input.gyro_mode > GYRO_STICK)
         return "input.gyro_mode must be 0 (off), 1 (mouse) or 2 (stick)";
     if (s->input.gyro_sens < 1 || s->input.gyro_sens > 400)
