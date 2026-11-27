@@ -65,6 +65,15 @@ recreates it — back it up first if it holds state you want).
 ./scripts/qemu-console.sh             # attach to serial console
 ```
 
+Or manage the same disk through libvirt/Virt-Manager (bridged LAN IP,
+see Networking):
+
+```sh
+./scripts/register-libvirt.sh         # define + start domain wup-thinserver-arm64
+./scripts/register-libvirt.sh --stop  # graceful ACPI shutdown
+virsh -c qemu:///system console wup-thinserver-arm64   # serial console
+```
+
 Headless by design: `-display none`, serial console on
 `build/run/serial.log` (also a unix socket `build/run/serial.sock`).
 QMP and HMP sockets live in `build/run/`.
@@ -76,28 +85,57 @@ Environment overrides: `WUP_QEMU_HOST_ADDR` (default `0.0.0.0`),
 
 ## Networking
 
-QEMU user-mode networking (slirp) forwards:
+Two launch modes are supported:
+
+### libvirt / Virt-Manager (default, bridged)
+
+`scripts/register-libvirt.sh` defines the domain `wup-thinserver-arm64`
+on `qemu:///system` with a `type='bridge'` interface on **`br0`**. The
+guest's virtio NIC gets its own LAN address via DHCP — no NAT, no port
+forwarding. The host NIC (`enp42s0`) must be enslaved to `br0` with the
+host IP moved onto the bridge (NetworkManager example):
+
+```sh
+nmcli con add type bridge con-name br0 ifname br0 \
+    ipv4.method manual ipv4.addresses 192.168.2.100/24 \
+    ipv4.gateway 192.168.2.254 ipv4.dns "192.168.2.254"
+nmcli con mod "Wired connection 1" connection.master br0 \
+    connection.slave-type bridge
+nmcli con up br0
+```
+
+Do this once; it survives reboots. The guest then appears on the LAN
+(currently `192.168.2.204`, MAC `52:54:00:12:34:56`) and ThinServer
+listens directly on `<guest-ip>:50001`. SSH is
+`ssh -i build/images/qemu-admin-key admin@<guest-ip>` (port 22).
+
+Because the server answers from the same socket the client dialed,
+replies come from `<guest-ip>:50001` — the exact endpoint the GamePad
+must be configured with.
+
+### Standalone `run-qemu.sh` (slirp fallback)
+
+QEMU user-mode networking forwards:
 
 - `udp host:5080 -> guest:50001` — the WUP GamePad stream endpoint
 - `tcp host:2222 -> guest:22` — admin SSH (key
   `build/images/qemu-admin-key`)
 
-Because the server now answers from the same socket the client dialed,
-replies leave the host from `:5080`, which is exactly the endpoint the
-GamePad must be configured with.
-
-### GamePad connection profile
+### GamePad connection profile (libvirt mode)
 
 - Profile name: `ARM64 Lab`
-- Host: the LAN IP of this workstation (e.g. `192.168.x.y` — check with
-  `hostname -I`; do not hard-code it)
-- Port: `5080`
+- Host: the guest LAN IP (`192.168.2.204` today — check
+  `ip neigh show dev br0 | grep 52:54:00:12:34:56` or the serial log)
+- Port: `50001`
 - Auto-connect: disabled
 
-Example SSH access:
+Note the guest address is DHCP-assigned and may change; reserve it in
+the router or set a static address in the guest netplan if needed.
+
+Example SSH access (libvirt mode):
 
 ```sh
-ssh -i build/images/qemu-admin-key -p 2222 admin@127.0.0.1
+ssh -i build/images/qemu-admin-key admin@192.168.2.204
 ```
 
 ## What runs inside the guest
@@ -133,14 +171,17 @@ systemd drop-in written by `images/qemu/provision-guest.sh`.
   private D-Bus; Xvfb display :99 at 1280x720 (xwininfo verified).
 - Desktop shortcut `wup-thinserver-settings.desktop` on `/home/wup/Desktop`;
   `/usr/local/bin/wup-thin{server,-settings,-entrypoint}` present.
-- WUP protocol through slirp UDP forward (host :5080 → guest :50001):
-  `fake_pad.py --server 127.0.0.1 --port 5080 --seconds 25 --send-t
-  --send-n --keyframe` → `RESULT ok=1 hellos=85 videos=1689
-  uniq_frames=257 audios=588 t_acks=1 peer=127.0.0.1:5080` — replies
-  originate from the dialed host endpoint.
+- WUP protocol over the bridged LAN (guest `192.168.2.204:50001`):
+  `fake_pad.py --server 192.168.2.204 --port 50001 --seconds 20
+  --send-t --send-n --keyframe` → `RESULT ok=1 hellos=69 videos=1496
+  uniq_frames=231 audios=462 t_acks=1 peer=192.168.2.204:50001`.
+- Earlier slirp validation (standalone mode, host :5080 → guest :50001):
+  `RESULT ok=1 hellos=85 videos=1689 uniq_frames=257 audios=588
+  t_acks=1 peer=127.0.0.1:5080`.
 - Persistence: file in /home/wup + settings.json change survived a
   graceful poweroff + reboot; services auto-started.
-- Admin SSH: `ssh -i build/images/qemu-admin-key -p 2222 admin@127.0.0.1`.
+- Admin SSH (bridge mode): `ssh -i build/images/qemu-admin-key
+  admin@192.168.2.204`; standalone mode keeps `-p 2222 ...@127.0.0.1`.
 - Screenshot evidence: `docs/qemu-evidence/desktop-1280x720.png`
   (xwd of :99 captured inside the guest).
 
@@ -160,8 +201,13 @@ booting.
   numbers as Raspberry Pi performance evidence.
 - `pi4`/`zero2w` profiles approximate CPU/ABI only — they do not model
   Pi firmware, GPU, or codec blocks.
-- slirp UDP forwarding is per-flow; symmetric NAT and multiple
-  simultaneous GamePads are not supported by design (one active
-  session).
+- The libvirt domain uses bridge `br0`; recreating the domain requires
+  the bridge to exist first (`register-libvirt.sh` fails at tap setup
+  otherwise). Standalone `run-qemu.sh` needs no bridge (slirp).
+- The guest LAN IP is DHCP-assigned; it can change between boots unless
+  reserved on the router or pinned in the guest netplan.
+- slirp UDP forwarding (standalone mode) is per-flow; symmetric NAT
+  and multiple simultaneous GamePads are not supported by design (one
+  active session).
 - The QEMU graphical console is not used; diagnostics go through the
   virtual X display inside the guest (xwd/import via SSH).

@@ -34,6 +34,12 @@ esac; done
 if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
     echo "qemu already running (pid $(cat "$PIDFILE"))" >&2; exit 1
 fi
+# never grab the disk while the libvirt-managed copy is running
+if command -v virsh >/dev/null 2>&1 && \
+   virsh -c qemu:///system domstate wup-thinserver-arm64 2>/dev/null | grep -q running; then
+    echo "libvirt domain wup-thinserver-arm64 is running — use Virt-Manager/virsh, or ./scripts/register-libvirt.sh --stop first" >&2
+    exit 1
+fi
 [ -f "$IMG" ] || { echo "missing image $IMG — run scripts/build-qemu-image.sh" >&2; exit 1; }
 [ -f "$SEED" ] || { echo "missing seed $SEED — run scripts/build-qemu-image.sh" >&2; exit 1; }
 
