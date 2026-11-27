@@ -205,7 +205,9 @@ void xtest_button(Display *d, int btn, int press) {
 }
 
 void xtest_motion(Display *d, int dx, int dy) {
-    XTestFakeMotionEvent(d, -1, dx, dy, CurrentTime);
+    /* relative deltas: XTestFakeMotionEvent takes ABSOLUTE screen coords —
+       using it here teleported the cursor to (dx,dy) near the top-left */
+    XTestFakeRelativeMotionEvent(d, dx, dy, CurrentTime);
     XFlush(d);
 }
 
