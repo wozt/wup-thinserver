@@ -330,25 +330,23 @@ jobs:
           echo "prev=$PREV_TAG"
 
           # Components that were not rebuilt reuse the previous release's
-          # assets verbatim (identical inputs -> identical bits). Fresh
-          # artifacts win on name collisions (cp -n below).
+          # assets verbatim (identical inputs -> identical bits). Downloaded
+          # into prev/ now; merged into dist/ AFTER the fresh artifacts land
+          # so rebuilt files always win on name collisions (cp -n below).
           mkdir -p dist prev
           if [ -n "$PREV_TAG" ]; then
             pats=()
             [ "$NATIVE" != "true" ] && pats+=(
-              -p 'wup-thinserver-*-amd64.zip' -p 'wup-thinserver-*-amd64.deb'
-              -p 'wup-thinserver-*-amd64.AppImage'
-              -p 'wup-thinserver-*-arm64.zip' -p 'wup-thinserver-*-arm64.deb'
-              -p 'wup-thinserver-*-arm64.AppImage')
-            [ "$PI_DEBIAN" != "true" ] && pats+=(
-              -p 'wup-thinserver-pi[0-9]*-arm64.img.xz'
-              -p 'wup-thinserver-[!p]*-arm64.img.xz')
-            [ "$PI_PIOS" != "true" ] && pats+=(
-              -p 'wup-thinserver-pios-*-arm64.img.xz')
+              -p 'wup-thinserver_*_amd64.deb' -p 'wup-thinserver_*_arm64.deb'
+              -p 'wup-thinserver-*-amd64.zip' -p 'wup-thinserver-*-amd64.AppImage'
+              -p 'wup-thinserver-*-arm64.zip' -p 'wup-thinserver-*-arm64.AppImage')
+            if [ "$PI_DEBIAN" != "true" ] || [ "$PI_PIOS" != "true" ]; then
+              # img names carry no version: fetch all, cp -n keeps the fresh
+              # ones for whichever Pi family was actually rebuilt.
+              pats+=( -p 'wup-thinserver-*-arm64.img.xz' )
+            fi
             if [ "${#pats[@]}" -gt 0 ]; then
               gh release download "$PREV_TAG" "${pats[@]}" -D prev --clobber
-              cp -rn prev/. dist/
-              rm -rf prev
             fi
           fi
 
@@ -357,6 +355,10 @@ jobs:
           pattern: "*"
           path: dist
           merge-multiple: true
+
+      - name: Merge carried-over assets (fresh wins)
+        run: |
+          if [ -d prev ]; then cp -rn prev/. dist/ && rm -rf prev; fi
 
       - uses: docker/setup-buildx-action@v4
 
