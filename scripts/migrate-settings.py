@@ -9,6 +9,8 @@ settings) are never modified. Any file it edits is first copied to
 <name>.pre-desktop-migration.bak (once).
 
 Migrations applied:
+  * listen_port == 50001 (the port WUP Stream discovery also uses) ->
+    50002, ThinServer's dedicated discovery port.
   * input.stick_keys == legacy gaming defaults ["a","d","w","s",
     "Left","Right","Up","Down"] -> all empty (sticks now drive
     pointer/scroll).
@@ -43,41 +45,48 @@ def main() -> int:
               file=sys.stderr)
         return 0  # daemon will fall back to defaults / report the error
 
-    inp = cfg.get("input")
-    if not isinstance(inp, dict):
-        return 0
-
     changed = False
 
-    sk = inp.get("stick_keys")
-    if isinstance(sk, list) and sk[:8] == OLD_STICK_KEYS:
-        inp["stick_keys"] = [""] * 8
+    # 50001 is also WUP Stream's discovery port: ThinClient/ThinServer moved
+    # to 50002 so neither answers the other's beacons.
+    if cfg.get("listen_port") == 50001:
+        cfg["listen_port"] = 50002
         changed = True
 
-    if inp.get("right_stick_mouse"):
-        inp["right_stick_mouse"] = 0
-        changed = True
-    if "right_stick_scroll" not in inp:
-        inp["right_stick_scroll"] = 1
-        changed = True
-    if "left_stick_mouse" not in inp:
-        inp["left_stick_mouse"] = 1
-        changed = True
+    inp = cfg.get("input")
+    if not isinstance(inp, dict):
+        inp = None
 
-    mb = inp.get("mouse_buttons")
-    if isinstance(mb, list) and len(mb) == 18:
-        # L3 (index 15) -> left click, R3 (16) -> right click, only when free.
-        if not mb[15]:
-            mb[15] = 1
+    if inp is not None:
+        sk = inp.get("stick_keys")
+        if isinstance(sk, list) and sk[:8] == OLD_STICK_KEYS:
+            inp["stick_keys"] = [""] * 8
             changed = True
-        if not mb[16]:
-            mb[16] = 3
+
+        if inp.get("right_stick_mouse"):
+            inp["right_stick_mouse"] = 0
             changed = True
-    elif "mouse_buttons" not in inp:
-        mb = [0] * 18
-        mb[8], mb[9], mb[15], mb[16] = 1, 3, 1, 3
-        inp["mouse_buttons"] = mb
-        changed = True
+        if "right_stick_scroll" not in inp:
+            inp["right_stick_scroll"] = 1
+            changed = True
+        if "left_stick_mouse" not in inp:
+            inp["left_stick_mouse"] = 1
+            changed = True
+
+        mb = inp.get("mouse_buttons")
+        if isinstance(mb, list) and len(mb) == 18:
+            # L3 (index 15) -> left click, R3 (16) -> right click, only when free.
+            if not mb[15]:
+                mb[15] = 1
+                changed = True
+            if not mb[16]:
+                mb[16] = 3
+                changed = True
+        elif "mouse_buttons" not in inp:
+            mb = [0] * 18
+            mb[8], mb[9], mb[15], mb[16] = 1, 3, 1, 3
+            inp["mouse_buttons"] = mb
+            changed = True
 
     if not changed:
         return 0

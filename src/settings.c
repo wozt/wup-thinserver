@@ -55,7 +55,7 @@ void settings_defaults(settings_t *s) {
     s->kbps = 10000;
     s->gop = 0;
     s->pad_brightness = -1;
-    s->listen_port = 50001;
+    s->listen_port = 50002;   /* (WUP ThinClient beacons here; WUP Stream keeps 50001) */
     s->listen_address[0] = 0;
     s->audio_pc_to_pad = 1;
     s->audio_pad_to_pc = 0;
