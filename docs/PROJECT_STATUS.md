@@ -170,9 +170,15 @@ performance measurement, native install, Raspberry Pi).
       `host:5080` (custom `listen_port`) both produced `H` replies sent to
       the sender's arbitrary source port — the mechanism direct/WAN
       clients rely on (cone NAT, no inbound forwarding).
-- [ ] **Pending:** connection profile manager and alphanumeric hostname
-      keyboard on the client (endpoint host/port already configurable via
-      `thinclient.cfg`); secure WAN transport; physical GamePad retest.
+- [x] **Implemented / automatically tested:** `'T'` request dedup by
+      consecutive reqid (recorded ack replayed, reset per session) and
+      peer-port updates restricted to validated session packets
+      (`B`/`N`/`M`/`T`/`I` type+length); `B` post-session is the defined
+      NAT-rebinding path.
+- [ ] **Pending:** isolated network-namespace NAT validation
+      (translated ports, endpoint filtering, multi-client, mapping
+      expiry); secure WAN transport feasibility; PC reference client;
+      physical GamePad retest of the profile manager.
 
 ## Known issues / risks
 
