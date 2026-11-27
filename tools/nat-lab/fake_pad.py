@@ -39,6 +39,10 @@ def main():
                     help="send an N retransmit request mid-session")
     ap.add_argument("--peer-port", type=int, default=0,
                     help="if set, require the H source port to equal this")
+    ap.add_argument("--probe", action="store_true",
+                    help="exit 0 once a valid H arrives (no media required)")
+    ap.add_argument("--spray", action="store_true",
+                    help="also send I reports while beaconing (no H needed)")
     ap.add_argument("--keyframe", action="store_true",
                     help="set the I keyframe-request flag")
     args = ap.parse_args()
@@ -55,8 +59,12 @@ def main():
     # --- beacon until H -----------------------------------------------------
     deadline = time.time() + args.beacons * 0.5
     hello = None
+    tick = 0
     while time.time() < deadline:
         sock.sendto(b, server)
+        if args.spray:
+            pkt, tick = build_i(tick)
+            sock.sendto(pkt, server)
         try:
             data, peer = sock.recvfrom(2048)
         except socket.timeout:
@@ -74,6 +82,9 @@ def main():
         print(f"RESULT ok=0 stage=peerport expected={args.peer_port} "
               f"got={peer[1]}")
         return 1
+    if args.probe:
+        print(f"RESULT ok=1 probe=1 peer={stats['peer']}")
+        return 0
 
     # --- session ------------------------------------------------------------
     tick = 0

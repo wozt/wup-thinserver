@@ -294,11 +294,24 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
     # Once the session is established (first 'I'), the endpoint is locked:
     # a validated packet from the same IPv4 but a different source port is
     # another client sharing the NAT's external address (or a remapped
-    # endpoint) — the session ends instead of migrating, and the client
-    # re-beacons into a fresh session. Before 'I' the port may still move
-    # (beacon and first report can race a NAT rebinding).
+    # endpoint) — it is ignored while the session is healthy, so it can
+    # neither hijack nor interrupt the stream. When the active session
+    # expires (silence timeout), the next beacon binds a fresh endpoint.
+    # Before 'I' the port may still move (beacon and first report can
+    # race a NAT rebinding).
     pump_old = "        if (from.sin_addr.s_addr != w->pad.sin_addr.s_addr) continue;"
     pump_new = pump_old + """
+        int peer_packet = (b[0] == 'B' && n >= 4) ||
+                          (b[0] == 'N' && n >= 2 && n >= 4 + 8 * b[1]) ||
+                          (b[0] == 'M' && n > 8) ||
+                          (b[0] == 'T' && n >= 4) ||
+                          (b[0] == 'I' && n == 136);
+        if (!peer_packet) continue;
+        if (w->have && from.sin_port != w->pad.sin_port)
+            continue;                    /* foreign endpoint (same NAT IP, other port): ignore while the session is healthy */
+        w->pad.sin_port = from.sin_port;"""
+    # migrate the earlier variants if the cache already has them
+    pump_gone = pump_old + """
         int peer_packet = (b[0] == 'B' && n >= 4) ||
                           (b[0] == 'N' && n >= 2 && n >= 4 + 8 * b[1]) ||
                           (b[0] == 'M' && n > 8) ||
@@ -311,7 +324,6 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
             continue;
         }
         w->pad.sin_port = from.sin_port;"""
-    # migrate the earlier variants if the cache already has them
     pump_prev = pump_old + """
         int peer_packet = (b[0] == 'B' && n >= 4) ||
                           (b[0] == 'N' && n >= 2 && n >= 4 + 8 * b[1]) ||
@@ -322,7 +334,9 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
         w->pad.sin_port = from.sin_port;"""
     stale = (pump_old + "\n        w->pad.sin_port = from.sin_port;")
     if pump_new not in text:
-        if pump_prev in text:
+        if pump_gone in text:
+            text = text.replace(pump_gone, pump_new, 1)
+        elif pump_prev in text:
             text = text.replace(pump_prev, pump_new, 1)
         elif stale in text:
             text = text.replace(stale, pump_new, 1)

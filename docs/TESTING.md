@@ -87,8 +87,11 @@ sudo scripts/nat-lab.sh --only strict-filter
 Tests: `endpoint` (H must come from the dialed port), `custom-port`
 (same on UDP 5080), `session` (full B/H/I/V/A + T ack + N through NAT),
 `strict-filter` (address-and-port-dependent filtering emulation —
-replies must originate from the exact ip:port dialed), `multi`
-(two clients sharing one NAT external IPv4, turn-taking sessions).
+replies must originate from the exact ip:port dialed), `isolation`
+(client B's valid packets from another port must not interrupt client
+A's stream; B connects after A leaves), `multi` (two clients sharing
+one NAT external IPv4, turn-taking sessions), `regression` (a failing
+fake client must fail the harness).
 
 ## Manual / hardware validation checklist
 
