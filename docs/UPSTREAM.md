@@ -13,6 +13,9 @@ was taken, from where, and what was changed locally.
 
 `tools/build_wupstream_dep.py` pins `wozt/wup-stream` at `e1b0430` and builds
 `libwupstream.a` (wupstream.c + patched x264) inside the Meson build dir.
+The V2/camera audit and deliberate next pin are recorded in
+[`V2_COMPATIBILITY.md`](V2_COMPATIBILITY.md); the pin remains unchanged until
+ThinServer's local protocol patches and camera tests pass together.
 
 ## Imported files (server)
 

@@ -1,6 +1,6 @@
 # Project status
 
-Updated: 2026-11-26 (settings layout correction + direct connections)
+Updated: 2026-11-27 (WUP Homebrew V2 and camera compatibility audit)
 
 Status legend: **planned** / **in progress** / **implemented** /
 **tested automatically** / **validated on physical hardware** / **known issue**
@@ -12,6 +12,15 @@ Status legend: **planned** / **in progress** / **implemented** /
 - [x] AGENTS.md in both repos (git-ignored).
 - [x] Initial documentation set.
 - [x] Build system: Meson/Ninja for the daemon.
+- [x] **V2 ecosystem audit:** all public WOZT repositories were reviewed;
+      the relevant revisions, SDK/API compatibility, camera status, build
+      evidence, and preserved local changes are recorded in
+      `docs/V2_COMPATIBILITY.md`.
+- [x] **ThinClient V2 compatibility confirmed:** the client already pins the
+      WOZT V2.1+NetFS SDK at `3da1bfa5b3b2` and its current build/tests pass.
+- [ ] **Camera integration in progress:** ThinServer still pins the
+      pre-camera host library; controlled migration to the proven
+      `a082db95ba62` camera baseline is the next implementation increment.
 
 ## Milestone 1 — Independent Linux desktop (Docker)
 
