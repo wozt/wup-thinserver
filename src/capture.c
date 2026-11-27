@@ -138,11 +138,33 @@ static int setup_scaler(capture_t *c) {
     return c->tmp ? 0 : -1;
 }
 
+/* The streamed cursor hides after 10 s without pointer activity so idle
+   desktops stay clean; any motion or button change brings it back. */
+#define CURSOR_IDLE_S 10.0
+#define CURSOR_POLL_S 0.2
+static int cursor_idle(capture_t *c) {
+    double now = capture_seconds();
+    if (now - c->cursor_poll_s >= CURSOR_POLL_S) {
+        c->cursor_poll_s = now;
+        Window root, child;
+        int rx, ry, wx, wy;
+        unsigned mask;
+        if (XQueryPointer(c->dpy, DefaultRootWindow(c->dpy), &root, &child,
+                          &rx, &ry, &wx, &wy, &mask) &&
+            (rx != c->cursor_rx || ry != c->cursor_ry || mask != c->cursor_rmask)) {
+            c->cursor_rx = rx; c->cursor_ry = ry; c->cursor_rmask = mask;
+            c->cursor_active_s = now;
+        }
+    }
+    return now - c->cursor_active_s > CURSOR_IDLE_S;
+}
+
 /* X11 GetImage and MIT-SHM return drawable pixels only: the X server cursor
  * is a separate sprite. Composite XFixes' premultiplied ARGB cursor after
  * scaling so its position, hotspot and size follow the streamed geometry. */
 static void composite_cursor(capture_t *c, unsigned char *out) {
-    if (!c->cursor_visible || !c->cursor_available || !out) return;
+    if (!c->cursor_visible || !c->cursor_available || !out || cursor_idle(c))
+        return;
     XFixesCursorImage *ci = XFixesGetCursorImage(c->dpy);
     if (!ci || !ci->pixels || !ci->width || !ci->height) {
         if (ci) XFree(ci);
@@ -204,6 +226,8 @@ int capture_start(capture_t *c, const settings_t *s) {
     c->cursor_available = XFixesQueryExtension(c->dpy, &xfixes_event, &xfixes_error);
     if (c->cursor_visible && !c->cursor_available)
         fprintf(stderr, "[capture] XFixes unavailable; cursor will not be visible\n");
+    c->cursor_rx = -1;
+    c->cursor_poll_s = c->cursor_active_s = capture_seconds();
     Window root = DefaultRootWindow(c->dpy);
 
     if (s->source_type == SRC_SCREEN) {

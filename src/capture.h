@@ -25,6 +25,11 @@ typedef struct {
     int capture_backend;
     int cursor_visible;
     int cursor_available;
+    /* idle-hide: the streamed cursor disappears after 10 s without pointer
+       activity (polled via XQueryPointer, ~5 Hz) */
+    double cursor_poll_s, cursor_active_s;
+    int cursor_rx, cursor_ry;
+    unsigned cursor_rmask;
     wup_kms_t *kms;
     /* scaler */
     struct SwsContext *sws;
