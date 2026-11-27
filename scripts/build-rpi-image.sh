@@ -99,12 +99,16 @@ log "building $PROFILE image (this requires mount-namespace privileges)"
 (
     # rpi-image-gen resolves work/ from the caller's current directory.
     # Keep the large chroots, raw images and SBOMs under the ignored build/.
+    # Each profile gets its own workroot (-B) so pi4 and zero2w builds can
+    # run in parallel without colliding on chroot-c6e710e-dirty/.
     cd "$BUILD_ROOT"
+    WORKROOT="$BUILD_ROOT/work-$PROFILE"
+    mkdir -p "$WORKROOT"
     # Its host-tool build installs shared libraries beside genimage without an
     # rpath. Keep that private prefix visible on both AMD64 and ARM64 hosts.
     HOST_TRIPLET="$(dpkg-architecture -qDEB_BUILD_GNU_TYPE)"
-    export LD_LIBRARY_PATH="$BUILD_ROOT/work/$HOST_TRIPLET/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    "$SOURCE/rpi-image-gen" build -S "$PROJECT" -c "$PROJECT/config/$CONFIG"
+    export LD_LIBRARY_PATH="$WORKROOT/$HOST_TRIPLET/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    "$SOURCE/rpi-image-gen" build -B "$WORKROOT" -S "$PROJECT" -c "$PROJECT/config/$CONFIG"
 )
 IMAGE="$BUILD_ROOT/work/image-$IMAGE_NAME/$IMAGE_NAME.img"
 [ -f "$IMAGE" ] || die "rpi-image-gen did not produce $IMAGE"

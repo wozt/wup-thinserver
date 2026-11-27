@@ -20,7 +20,8 @@ esac
     --port "$PORT" \
     --no-start
 
-usermod --lock wup
+# Baseline appliance account (wup/wup + sudo + root/wup) is set by
+# install-native.sh — do NOT lock the password here.
 groupadd -f input
 groupadd -f video
 usermod -aG input,video,audio wup
