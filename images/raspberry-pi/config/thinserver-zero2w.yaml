@@ -10,7 +10,7 @@ device:
 image:
   layer: image-rpios
   boot_part_size: 256M
-  root_part_size: 6G
+  root_part_size: 2G
   name: wup-thinserver-zero2w-arm64
 
 layer:

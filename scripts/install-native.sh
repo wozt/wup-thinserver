@@ -120,7 +120,13 @@ if ! id "$WUP_USER" >/dev/null 2>&1; then
 else
     log "user $WUP_USER already exists"
 fi
-mkdir -p "$WUP_CONFIG_DIR"; chown -R "$WUP_USER:$WUP_USER" "$WUP_CONFIG_DIR"
+mkdir -p "$WUP_CONFIG_DIR"
+# .config itself must belong to the desktop user: xfconfd/xfce4-session run
+# as that user and fail silently (black screen, no WM/panel) when the
+# directory is root-owned — mkdir -p above creates it as root on fresh
+# images. Only the directory itself is chowned, not its whole content.
+chown "$WUP_USER:$WUP_USER" "$WUP_HOME/.config"
+chown -R "$WUP_USER:$WUP_USER" "$WUP_CONFIG_DIR"
 
 # Baseline appliance accounts: wup/wup in sudo, root/wup.
 # --password overrides the wup password interactively below.

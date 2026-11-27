@@ -1,0 +1,13 @@
+[Unit]
+Description=Grow root filesystem to fill the boot media
+After=local-fs.target
+Before=wup-firstboot.service wup-thinserver.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wup-growfs
+TimeoutStartSec=120
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

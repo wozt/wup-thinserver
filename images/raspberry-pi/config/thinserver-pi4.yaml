@@ -10,7 +10,7 @@ device:
 image:
   layer: image-rpios
   boot_part_size: 256M
-  root_part_size: 8G
+  root_part_size: 3G
   name: wup-thinserver-pi4-arm64
 
 layer:

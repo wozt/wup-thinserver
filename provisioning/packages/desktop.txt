@@ -44,3 +44,4 @@ vlc
 screen
 byobu
 btop
+cloud-guest-utils

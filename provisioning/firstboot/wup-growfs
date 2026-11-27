@@ -1,0 +1,18 @@
+#!/bin/sh
+# Grow the root partition and filesystem to fill the boot media.
+# Runs once at first boot (wup-growfs.service); idempotent afterwards —
+# growpart/resize2fs no-op when the partition already fills the disk.
+set -e
+
+ROOT_SRC=$(findmnt -n -o SOURCE /)
+[ -b "$ROOT_SRC" ] || exit 0
+DISK=$(lsblk -dno PKNAME "$ROOT_SRC" | tr -d ' ')
+PARTN=$(lsblk -no PARTN "$ROOT_SRC" | tr -d ' ')
+[ -n "$DISK" ] && [ -n "$PARTN" ] || exit 0
+
+if command -v growpart >/dev/null 2>&1; then
+    growpart "/dev/$DISK" "$PARTN" || true
+elif command -v parted >/dev/null 2>&1; then
+    parted -s "/dev/$DISK" resizepart "$PARTN" 100% || true
+fi
+resize2fs "$ROOT_SRC" || true

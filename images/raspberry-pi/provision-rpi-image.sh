@@ -69,6 +69,16 @@ install -m 0644 /opt/wup/firstboot/wup-firstboot.conf.example \
     /boot/firmware/wup-firstboot.conf.example
 systemctl enable wup-firstboot.service
 
+# First-boot rootfs expansion: the image ships a small root partition
+# (root_part_size in the layer config) and wup-growfs grows it to fill the
+# card on first boot, like Raspberry Pi OS / cloud-init do. Debian
+# rpi-image-gen images have no such mechanism of their own. The pios
+# (cloud-init) images already grow the filesystem themselves.
+install -m 0755 /opt/wup/firstboot/wup-growfs /usr/local/sbin/wup-growfs
+install -m 0644 /opt/wup/firstboot/wup-growfs.service \
+    /etc/systemd/system/wup-growfs.service
+systemctl enable wup-growfs.service
+
 if [ "$PROFILE" = zero2w ]; then
     # A real reduced-memory profile: no compositing and no optional discovery,
     # printing or package-maintenance daemons in the 512 MiB appliance.
