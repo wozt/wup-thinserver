@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 UPSTREAM_URL = "https://github.com/wozt/wup-stream.git"
-UPSTREAM_COMMIT = "e1b04305ca123e3f6980d60ef302ada9c19ce127"
+UPSTREAM_COMMIT = "a082db95ba621ceaa5f5f436755d91df87400392"
 
 
 def run(command, *, cwd=None):
@@ -44,6 +44,10 @@ def prepare_source(source):
         run(["git", "-C", source, "fetch", "--depth", "1",
              UPSTREAM_URL, UPSTREAM_COMMIT])
         run(["git", "-C", source, "checkout", "--force", "--detach", "FETCH_HEAD"])
+    else:
+        # The cached tree contains the generated local patches after a build.
+        # Reset it before reapplying this script so patch changes are testable.
+        run(["git", "-C", source, "checkout", "--force", "--detach", UPSTREAM_COMMIT])
     if git_output(source, "rev-parse", "HEAD") != UPSTREAM_COMMIT:
         raise RuntimeError("Fetched upstream commit differs from the pin")
     for filename in ("host/build.sh", "host/wupstream.h"):
@@ -99,6 +103,36 @@ def extend_brightness_commands(source):
         code.write_text(text.replace(old, new, 1))
 
 
+def extend_camera_switch(source):
+    """Allow both camera consumers to release the shared pad capture."""
+    header = source / "host/wupstream.h"
+    code = source / "host/wupstream.c"
+    declaration = "void wupstream_camera_disable(wupstream *w);"
+    implementation = """void wupstream_camera_disable(wupstream *w) {
+    pthread_mutex_lock(&w->mu);
+    w->cam = 0; w->last_hello = 0;
+    w->cam_n = w->cam_r = w->cam_parts = w->cam_len = 0;
+    w->cam_got = 0; w->cam_cur = w->cam_run_out = -1;
+    w->cam_ok = 1; w->cam_fn = 0;
+    pthread_mutex_unlock(&w->mu);
+}
+"""
+    for path, addition in ((header, declaration + "\n"), (code, implementation)):
+        text = path.read_text()
+        if addition not in text:
+            anchor = "int wupstream_camera("
+            if text.count(anchor) != 1:
+                raise RuntimeError(f"Unexpected camera API: {path}")
+            path.write_text(text.replace(anchor, addition + anchor, 1))
+    text = code.read_text()
+    old = "if (b[0] == 'C' && n > 8"
+    new = "if (w->cam && b[0] == 'C' && n > 8"
+    if new not in text:
+        if text.count(old) != 1:
+            raise RuntimeError("Unexpected camera packet handler")
+        code.write_text(text.replace(old, new, 1))
+
+
 def extend_control_packets(source):
     """WUP_THIN_PROTOCOL: live input-mode control between pad and daemon.
 
@@ -127,7 +161,7 @@ void wupstream_control_reply(wupstream *w, int reqid, int status, int mode);"""
 
     # struct fields: pending 'T' request + the mode advertised in 'H'
     field_anchor = "int16_t micbuf[48000]; int mic_w, mic_n;"
-    fields = field_anchor + "\n    int input_mode, ctrl_pending, ctrl_reqid, ctrl_mode;"
+    fields = field_anchor + "\n    int input_mode, ctrl_pending, ctrl_reqid, ctrl_mode, cam_capable;"
     text = code.read_text()
     if fields not in text:
         if text.count(field_anchor) != 1:
@@ -152,9 +186,9 @@ void wupstream_control_reply(wupstream *w, int reqid, int status, int mode);"""
         text = text.replace(intake_anchor, intake, 1)
 
     # hello: advertise the effective input mode as a 5th byte
-    hello_old = "char h[4] = { 'H', 1, (char)w->mic, (char)w->light }; put(w, h, 4);"
-    hello_new = ("char h[5] = { 'H', 1, (char)w->mic, (char)w->light,"
-                 " (char)w->input_mode }; put(w, h, 5);")
+    hello_old = "char h[4] = { 'H', 1, (char)(w->mic | w->cam << 1), (char)w->light }; put(w, h, 4);"
+    hello_new = ("char h[5] = { 'H', 1, (char)(w->mic | w->cam << 1),"
+                 " (char)w->light, (char)w->input_mode }; put(w, h, 5);")
     if hello_new not in text:
         if text.count(hello_old) != 1:
             raise RuntimeError(f"Unexpected pinned hello: {code}")
@@ -172,6 +206,10 @@ int wupstream_take_control(wupstream *w, int *reqid, int *mode) {
     pthread_mutex_unlock(&w->mu);
     return ok;
 }
+int wupstream_camera_capable(wupstream *w) {
+    pthread_mutex_lock(&w->mu); int capable = w->cam_capable;
+    pthread_mutex_unlock(&w->mu); return capable;
+}
 void wupstream_control_reply(wupstream *w, int reqid, int status, int mode) {
     uint8_t p[4] = { 'T', (uint8_t)reqid, (uint8_t)status, (uint8_t)mode };
     pthread_mutex_lock(&w->mu); put(w, p, 4); pthread_mutex_unlock(&w->mu);
@@ -182,6 +220,20 @@ void wupstream_control_reply(wupstream *w, int reqid, int status, int mode) {
         if text.count(api_anchor) != 1:
             raise RuntimeError(f"Unexpected pinned source: {code}")
         text = text.replace(api_anchor, api, 1)
+
+    capability_decl = "int wupstream_camera_capable(wupstream *w);"
+    text_h = header.read_text()
+    if capability_decl not in text_h:
+        anchor = "int wupstream_take_control(wupstream *w, int *reqid, int *mode);"
+        if text_h.count(anchor) != 1:
+            raise RuntimeError(f"Unexpected control API: {header}")
+        header.write_text(text_h.replace(anchor, anchor + "\n" + capability_decl, 1))
+
+    capability = intake_anchor + " w->cam_capable = (b[1] & 0x80) != 0;"
+    if capability not in text:
+        if text.count(intake_anchor) != 1:
+            raise RuntimeError(f"Unexpected input handler: {code}")
+        text = text.replace(intake_anchor, capability, 1)
 
     code.write_text(text)
 
@@ -304,6 +356,7 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
         int peer_packet = (b[0] == 'B' && n >= 4) ||
                           (b[0] == 'N' && n >= 2 && n >= 4 + 8 * b[1]) ||
                           (b[0] == 'M' && n > 8) ||
+                          (b[0] == 'C' && n > 8 && n <= 1032 && b[3] && b[3] <= 64 && b[2] < b[3]) ||
                           (b[0] == 'T' && n >= 4) ||
                           (b[0] == 'I' && n == 136);
         if (!peer_packet) continue;
@@ -315,6 +368,7 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
         int peer_packet = (b[0] == 'B' && n >= 4) ||
                           (b[0] == 'N' && n >= 2 && n >= 4 + 8 * b[1]) ||
                           (b[0] == 'M' && n > 8) ||
+                          (b[0] == 'C' && n > 8 && n <= 1032 && b[3] && b[3] <= 64 && b[2] < b[3]) ||
                           (b[0] == 'T' && n >= 4) ||
                           (b[0] == 'I' && n == 136);
         if (!peer_packet) continue;
@@ -328,6 +382,7 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
         int peer_packet = (b[0] == 'B' && n >= 4) ||
                           (b[0] == 'N' && n >= 2 && n >= 4 + 8 * b[1]) ||
                           (b[0] == 'M' && n > 8) ||
+                          (b[0] == 'C' && n > 8 && n <= 1032 && b[3] && b[3] <= 64 && b[2] < b[3]) ||
                           (b[0] == 'T' && n >= 4) ||
                           (b[0] == 'I' && n == 136);
         if (!peer_packet) continue;
@@ -364,6 +419,7 @@ def main(argv):
     prepare_source(source)
     extend_i420(source)
     extend_brightness_commands(source)
+    extend_camera_switch(source)
     extend_control_packets(source)
     extend_direct_connections(source)
     # The upstream build script already pins x264 and applies the DRH patch.

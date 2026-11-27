@@ -8,14 +8,16 @@ was taken, from where, and what was changed locally.
 | Repo | URL | Commit used | Role |
 |---|---|---|---|
 | wup-stream-server-linux | https://github.com/wozt/wup-stream-server-linux | `254539d260fc840738bb3401bcb1032a06df7a8a` (2026-11-26) | server engine source (`src/`) |
-| wup-stream | https://github.com/wozt/wup-stream | `e1b04305ca123e3f6980d60ef302ada9c19ce127` (2026-11-22) | `libwupstream` (protocol + x264) and pad receiver reference |
+| wup-stream | https://github.com/wozt/wup-stream | `a082db95ba621ceaa5f5f436755d91df87400392` (2026-11-27) | V2 camera-capable `libwupstream` (protocol + x264) and pad receiver reference |
 | wup-homebrew (fork) | https://github.com/ravensclawx/wup-homebrew | local `wup-homebrew-with-lan-storage` @ `7b641902` (branch `feature/netfs`) | libwup toolchain for the client |
 
-`tools/build_wupstream_dep.py` pins `wozt/wup-stream` at `e1b0430` and builds
+`tools/build_wupstream_dep.py` pins `wozt/wup-stream` at `a082db9` and builds
 `libwupstream.a` (wupstream.c + patched x264) inside the Meson build dir.
-The V2/camera audit and deliberate next pin are recorded in
-[`V2_COMPATIBILITY.md`](V2_COMPATIBILITY.md); the pin remains unchanged until
-ThinServer's local protocol patches and camera tests pass together.
+The V2/camera audit is recorded in
+[`V2_COMPATIBILITY.md`](V2_COMPATIBILITY.md). ThinServer reapplies its local
+I420, brightness, five-byte hello/`T`, direct-endpoint, NAT isolation, camera
+disable, and capability-reporting extensions to this exact source during the
+independent build.
 
 ## Imported files (server)
 

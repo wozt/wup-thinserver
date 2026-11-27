@@ -18,9 +18,13 @@ Status legend: **planned** / **in progress** / **implemented** /
       `docs/V2_COMPATIBILITY.md`.
 - [x] **ThinClient V2 compatibility confirmed:** the client already pins the
       WOZT V2.1+NetFS SDK at `3da1bfa5b3b2` and its current build/tests pass.
-- [ ] **Camera integration in progress:** ThinServer still pins the
-      pre-camera host library; controlled migration to the proven
-      `a082db95ba62` camera baseline is the next implementation increment.
+- [x] **Camera dependency baseline:** ThinServer now pins the proven
+      `a082db95ba62` camera host library. Its I420, brightness, five-byte
+      hello/`T`, direct endpoint, NAT isolation, camera capability, and
+      disable extensions build together and all six existing tests pass.
+- [ ] **Camera integration in progress:** receive/decode, protected preview,
+      V4L2 announcement, Settings controls, Docker overlay, and synthetic
+      tests remain the active implementation increment.
 
 ## Milestone 1 — Independent Linux desktop (Docker)
 

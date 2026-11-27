@@ -16,7 +16,7 @@ NetFS, or the WUP Stream wire protocol.
 | [wup-thinclient](https://github.com/wozt/wup-thinclient) | `main` `dc13a8fb5e42` | Git submodule pins the V2+NetFS SDK exactly at `3da1bfa5b3b2` | Video, input, audio, microphone, brightness, filesystem, and networking use V2 APIs; camera uplink not yet wired into ThinClient | Clean; V2 build and host tests pass; 142892-byte artifact |
 | [wup-stream](https://github.com/wozt/wup-stream) | `main` `6ac48c732c9d` | Builds its pad app against an external V2 libwup; host library is self-built with pinned x264 | Proven 640×480 hardware-H.264 camera uplink and host reconstruction; protocol baseline is `a082db95ba62` | Local source matches origin; untracked developer file `argparse` preserved |
 | [wup-stream-server-linux](https://github.com/wozt/wup-stream-server-linux) | `main` `cf0e9eb946e8` | Pins camera-capable wup-stream `a082db95ba62` | FFmpeg decode, 640×480 BGRA preview, and 640×480 YUYV V4L2 output provide the reference implementation | Local source matches origin; Python caches preserved |
-| [wup-thinserver](https://github.com/wozt/wup-thinserver) | `main` `232e9500b0f6` | Still pins pre-camera wup-stream `e1b04305ca12`; local direct-connect, mode-control, brightness, and I420 patches must survive the repin | V2 ThinClient-compatible desktop stream works; camera receive/preview/announce not yet integrated | Six host tests pass; two untracked QEMU screenshots preserved |
+| [wup-thinserver](https://github.com/wozt/wup-thinserver) | `main` (audit baseline `232e9500b0f6`) | Camera-capable wup-stream `a082db95ba62`; local direct-connect, mode-control, brightness, capability, and I420 patches are reapplied at build time | V2 ThinClient-compatible desktop stream works; camera receive/preview/announce not yet integrated | Repinned build and six host tests pass; two untracked QEMU screenshots preserved |
 | [wup-boy](https://github.com/wozt/wup-boy) | public `main` `03779aa4e91b`; local `feature/net-roms` `a2c082b492dc` | External `LIBWUP`, not revision-pinned; local branch relies on WOZT `/net` | V2 compatibility depends on selecting the V2 SDK; no camera use | Local NetFS branch clean; preserve network-ROM features |
 | [capture2cloud](https://github.com/wozt/capture2cloud) | `main` `1fb2dc2bba31` | Isolated host helper pins pre-camera wup-stream `8609916410a2`; no GamePad libwup app | Current video/audio/input role remains wire-compatible with V2 because it never requests camera; repin only if it becomes a camera consumer | Clean; preserve the separate helper to avoid x264 ABI conflicts |
 
@@ -71,7 +71,7 @@ remain untouched:
 - WUP Stream: `argparse`;
 - WUP Stream Server Linux: Python `__pycache__` directories.
 
-The next compatible increment is a narrow port of the proven ThinClient
-camera sender, followed by the pinned host receiver. It must not replace the
-existing HOME state machine, profiles, direct endpoints, NetFS, or streaming
-optimizations.
+ThinClient's proven camera sender has now been ported without replacing its
+HOME state machine, profiles, direct endpoints, NetFS, or streaming
+optimizations. The next increment is the host receiver and its bounded local
+preview transport.
