@@ -106,11 +106,12 @@ nmcli con up br0
 
 Do this once; it survives reboots. The guest then appears on the LAN
 (currently `192.168.2.204`, MAC `52:54:00:12:34:56`) and ThinServer
-listens directly on `<guest-ip>:50001`. SSH is
+listens directly on `<guest-ip>:50003` (dedicated port — the Docker
+ThinServer keeps 50002; see Networking). SSH is
 `ssh -i build/images/qemu-admin-key admin@<guest-ip>` (port 22).
 
 Because the server answers from the same socket the client dialed,
-replies come from `<guest-ip>:50001` — the exact endpoint the GamePad
+replies come from `<guest-ip>:50003` — the exact endpoint the GamePad
 must be configured with.
 
 ### Standalone `run-qemu.sh` (slirp fallback)
@@ -126,11 +127,16 @@ QEMU user-mode networking forwards:
 - Profile name: `ARM64 Lab`
 - Host: the guest LAN IP (`192.168.2.204` today — check
   `ip neigh show dev br0 | grep 52:54:00:12:34:56` or the serial log)
-- Port: `50001`
+- Port: `50003`
 - Auto-connect: disabled
 
-Note the guest address is DHCP-assigned and may change; reserve it in
-the router or set a static address in the guest netplan if needed.
+Note the guest address is now static (`192.168.2.204/24`, gateway
+`192.168.2.254`, set in `/etc/netplan/50-cloud-init.yaml` inside the
+guest). Multiple ThinServers coexist on the LAN by IP + dedicated
+`listen_port`: Docker `192.168.2.100:50002`, this VM
+`192.168.2.204:50003`. LAN-discovery broadcasts only reach servers
+sharing a port, so multi-server setups should use direct-connect
+profiles with explicit host + port.
 
 Example SSH access (libvirt mode):
 
@@ -171,7 +177,8 @@ systemd drop-in written by `images/qemu/provision-guest.sh`.
   private D-Bus; Xvfb display :99 at 1280x720 (xwininfo verified).
 - Desktop shortcut `wup-thinserver-settings.desktop` on `/home/wup/Desktop`;
   `/usr/local/bin/wup-thin{server,-settings,-entrypoint}` present.
-- WUP protocol over the bridged LAN (guest `192.168.2.204:50001`):
+- WUP protocol over the bridged LAN (guest `192.168.2.204`, now on dedicated port 50003;
+the :50001 run below predates the port split):
   `fake_pad.py --server 192.168.2.204 --port 50001 --seconds 20
   --send-t --send-n --keyframe` → `RESULT ok=1 hellos=69 videos=1496
   uniq_frames=231 audios=462 t_acks=1 peer=192.168.2.204:50001`.
