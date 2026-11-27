@@ -255,10 +255,11 @@ jobs:
           cp release/README.md dist/README.md
 
           # Buildx drops a *.dockerbuild record artifact; never publish it.
-          rm -f dist/*.dockerbuild
+          # Per-file .sha256 sidecars are redundant: SHA256SUMS covers all.
+          rm -f dist/*.dockerbuild dist/*.sha256
 
-          # One combined checksum file for every artifact in the release.
-          (cd dist && sha256sum -- * | grep -v 'SHA256SUMS$' > SHA256SUMS)
+          # One combined checksum file for every release asset.
+          (cd dist && sha256sum -- * > SHA256SUMS)
 
       - name: Publish GitHub release
         env:

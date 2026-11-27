@@ -18,8 +18,12 @@ Pick the artifact that matches your target:
 | `wup-thinserver-<ver>-<arch>.AppImage` | Any Linux desktop | Settings app + daemon binaries |
 | `docker-compose.yml` | Docker host | Container deployment (ghcr.io image) |
 
-Every artifact ships `SHA256SUMS`-style `.sha256` files; verify with
-`sha256sum -c <file>.sha256` after download.
+Every artifact ships `.sha256` files for local builds; GitHub releases
+carry a single `SHA256SUMS` covering every asset. Verify with:
+
+```sh
+sha256sum -c SHA256SUMS
+```
 
 ## Raspberry Pi images
 
@@ -148,8 +152,8 @@ See `docs/` in the repository for the full configuration reference.
 
 ## Verifying downloads
 
-Each asset has a `.sha256` sidecar:
+GitHub releases include one `SHA256SUMS` file covering every asset:
 
 ```sh
-sha256sum -c wup-thinserver-pi4-arm64.img.xz.sha256
+sha256sum -c SHA256SUMS
 ```
