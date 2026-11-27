@@ -1,5 +1,6 @@
 #pragma once
 #include "settings.h"
+#include "camera.h"
 #include "wupstream.h"
 #include <stddef.h>
 
@@ -31,6 +32,8 @@ const char *server_status(server_t *srv);    /* human-readable status */
 int server_input_snapshot(server_t *srv, wupstream_input_t *out); /* 1 = fresh pad data */
 void server_input_mode_snapshot(server_t *srv, int *mode, int *gamepad_available,
                                 char *status, size_t status_size);
+void server_camera_snapshot(server_t *srv, camera_status_t *status,
+                            char *preview_path, size_t path_size);
 
 /* WUP_V98_ALL_IN_ONE */
 void server_sync_settings(server_t *srv); /* stage a copy; never read GTK's settings on stream thread */

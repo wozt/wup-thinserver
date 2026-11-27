@@ -17,6 +17,12 @@ Status terms: **planned**, **in progress**, **implemented**,
    HOME+X client shortcut remain in progress. Profiles, detailed gesture
    controls, seven JSON themes, and JSON localization remain planned. Docker
    runtime validation passes for Desktop mode.
+3b. **GamePad camera uplink — implemented / automatically tested.** ThinClient
+   sends bounded V2 H.264 fragments; ThinServer shares one background decoder
+   between independent Announce and Preview consumers, validates the exact
+   dedicated V4L2 identity, exposes a protected embedded preview, and ships an
+   optional non-privileged Docker device overlay. Physical camera validation
+   and Docker runtime evidence remain pending.
 4. **PC protocol client — planned.** Independent C11/Meson repository,
    discovery/handshake, exact packet reassembly, and GamePad-targeted H.264
    reconstruction feasibility before SDL presentation claims.

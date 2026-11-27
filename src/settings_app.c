@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "settings.h"
 #include "input.h"
+#include "camera_frame.h"
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
 #include <X11/Xlib.h>
@@ -12,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -52,10 +55,20 @@ typedef struct {
     GtkWidget *brightness_value, *left_keys_box, *right_keys_box;
     GtkWidget *stick_entries[8];
     GtkWidget *microphone, *volume;
+    GtkWidget *camera_announce, *camera_preview, *camera_device;
+    GtkWidget *camera_picture, *camera_status;
     BindingRow bindings[WBTN_COUNT];
     input_cfg_t input;
     int audio_pad_to_pc, pad_volume_controls_pc;
     int pad_brightness;      /* -1 auto, 1..6 discrete levels */
+    int camera_announce_enabled, camera_preview_enabled;
+    char camera_device_path[128];
+    char camera_preview_path[256];
+    int camera_frame_fd;
+    camera_frame_shared_t *camera_frame;
+    unsigned char *camera_pixels;
+    uint32_t camera_sequence;
+    gboolean camera_pixels_valid;
     guint brightness_flush;  /* debounce id for live slider changes */
     gboolean loading;
 } App;
@@ -255,6 +268,11 @@ static void widgets_from_config(App *app) {
         gtk_entry_set_text(GTK_ENTRY(app->stick_entries[i]), app->input.stick_keys[i]);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->microphone), app->audio_pad_to_pc);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->volume), app->pad_volume_controls_pc);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->camera_announce),
+                                 app->camera_announce_enabled);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->camera_preview),
+                                 app->camera_preview_enabled);
+    gtk_entry_set_text(GTK_ENTRY(app->camera_device), app->camera_device_path);
     stick_keys_visibility(NULL, app);
     int brightness = app->pad_brightness < 0 ? 0 : app->pad_brightness;
     gtk_range_set_value(GTK_RANGE(app->brightness), brightness);
@@ -285,6 +303,13 @@ static gboolean load_current(App *app, gboolean quiet) {
         app->pad_volume_controls_pc = (int)json_object_get_int_member_with_default(config, "pad_volume_controls_pc", 1);
         app->pad_brightness = (int)json_object_get_int_member_with_default(config, "pad_brightness", -1);
         if (app->pad_brightness < -1 || app->pad_brightness > 6) app->pad_brightness = -1;
+        app->camera_announce_enabled = json_object_get_boolean_member_with_default(
+            config, "camera_announce", FALSE);
+        app->camera_preview_enabled = json_object_get_boolean_member_with_default(
+            config, "camera_preview", FALSE);
+        g_strlcpy(app->camera_device_path,
+            json_object_get_string_member_with_default(config, "camera_device", "/dev/video42"),
+            sizeof app->camera_device_path);
     }
     widgets_from_config(app);
     if (!quiet) set_status(app, "Current settings loaded", FALSE);
@@ -339,6 +364,13 @@ static void config_from_widgets(App *app) {
     }
     app->audio_pad_to_pc = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->microphone));
     app->pad_volume_controls_pc = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->volume));
+    app->camera_announce_enabled = gtk_toggle_button_get_active(
+        GTK_TOGGLE_BUTTON(app->camera_announce));
+    app->camera_preview_enabled = gtk_toggle_button_get_active(
+        GTK_TOGGLE_BUTTON(app->camera_preview));
+    g_strlcpy(app->camera_device_path,
+              gtk_entry_get_text(GTK_ENTRY(app->camera_device)),
+              sizeof app->camera_device_path);
 }
 
 static char *apply_request_json(App *app) {
@@ -347,6 +379,9 @@ static char *apply_request_json(App *app) {
     json_builder_set_member_name(b, "op"); json_builder_add_string_value(b, "apply_input");
     json_builder_set_member_name(b, "audio_pad_to_pc"); json_builder_add_int_value(b, app->audio_pad_to_pc);
     json_builder_set_member_name(b, "pad_volume_controls_pc"); json_builder_add_int_value(b, app->pad_volume_controls_pc);
+    json_builder_set_member_name(b, "camera_announce"); json_builder_add_boolean_value(b, app->camera_announce_enabled);
+    json_builder_set_member_name(b, "camera_preview"); json_builder_add_boolean_value(b, app->camera_preview_enabled);
+    json_builder_set_member_name(b, "camera_device"); json_builder_add_string_value(b, app->camera_device_path);
     json_builder_set_member_name(b, "input"); json_builder_begin_object(b);
 #define ADD_INT(name) json_builder_set_member_name(b, #name); json_builder_add_int_value(b, app->input.name)
     ADD_INT(mode); ADD_INT(deadzone); ADD_INT(sensitivity); ADD_INT(invert_y); ADD_INT(gyro_mode);
@@ -420,11 +455,124 @@ static gboolean capture_key(GtkWidget *entry, GdkEventKey *event, gpointer data)
     g_string_free(value, TRUE); return TRUE;
 }
 
+static void camera_frame_close(App *app) {
+    if (app->camera_frame)
+        munmap(app->camera_frame, sizeof *app->camera_frame);
+    if (app->camera_frame_fd >= 0) close(app->camera_frame_fd);
+    app->camera_frame = NULL;
+    app->camera_frame_fd = -1;
+    app->camera_sequence = 0;
+    app->camera_pixels_valid = FALSE;
+}
+
+static gboolean camera_frame_open(App *app) {
+    if (app->camera_frame || !app->camera_preview_path[0])
+        return app->camera_frame != NULL;
+    int fd = open(app->camera_preview_path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    struct stat info;
+    if (fd < 0 || fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) ||
+        info.st_uid != getuid() || (info.st_mode & 077) != 0 ||
+        info.st_size != (off_t)sizeof(camera_frame_shared_t)) {
+        if (fd >= 0) close(fd);
+        return FALSE;
+    }
+    camera_frame_shared_t *frame = mmap(NULL, sizeof *frame, PROT_READ,
+                                         MAP_SHARED, fd, 0);
+    if (frame == MAP_FAILED) { close(fd); return FALSE; }
+    if (frame->magic != WUP_CAMERA_FRAME_MAGIC ||
+        frame->version != WUP_CAMERA_FRAME_VERSION ||
+        frame->width != WUP_CAMERA_WIDTH ||
+        frame->height != WUP_CAMERA_HEIGHT ||
+        frame->stride != WUP_CAMERA_STRIDE) {
+        munmap(frame, sizeof *frame); close(fd); return FALSE;
+    }
+    app->camera_frame_fd = fd;
+    app->camera_frame = frame;
+    return TRUE;
+}
+
+static gboolean camera_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
+    App *app = data;
+    GtkAllocation area;
+    gtk_widget_get_allocation(widget, &area);
+    cairo_set_source_rgb(cr, 0.035, 0.065, 0.09);
+    cairo_paint(cr);
+    if (!app->camera_pixels_valid) {
+        cairo_set_source_rgb(cr, 0.55, 0.64, 0.72);
+        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
+                               CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_set_font_size(cr, 12);
+        const char *message = app->camera_preview &&
+            gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->camera_preview))
+            ? "Waiting for GamePad camera" : "Preview is disabled";
+        cairo_text_extents_t extents;
+        cairo_text_extents(cr, message, &extents);
+        cairo_move_to(cr, (area.width - extents.width) / 2.0 - extents.x_bearing,
+                      (area.height - extents.height) / 2.0 - extents.y_bearing);
+        cairo_show_text(cr, message);
+        return FALSE;
+    }
+    cairo_surface_t *surface = cairo_image_surface_create_for_data(
+        app->camera_pixels, CAIRO_FORMAT_ARGB32, WUP_CAMERA_WIDTH,
+        WUP_CAMERA_HEIGHT, WUP_CAMERA_STRIDE);
+    double scale = MIN((double)area.width / WUP_CAMERA_WIDTH,
+                       (double)area.height / WUP_CAMERA_HEIGHT);
+    double width = WUP_CAMERA_WIDTH * scale, height = WUP_CAMERA_HEIGHT * scale;
+    cairo_save(cr);
+    cairo_translate(cr, (area.width - width) / 2.0, (area.height - height) / 2.0);
+    cairo_scale(cr, scale, scale);
+    cairo_set_source_surface(cr, surface, 0, 0);
+    cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
+    cairo_paint(cr);
+    cairo_restore(cr);
+    cairo_surface_destroy(surface);
+    return FALSE;
+}
+
+static gboolean preview_tick(gpointer data) {
+    App *app = data;
+    GdkWindow *window = app->window ? gtk_widget_get_window(app->window) : NULL;
+    GdkWindowState state = window ? gdk_window_get_state(window) : GDK_WINDOW_STATE_WITHDRAWN;
+    gboolean visible = app->window && app->camera_picture &&
+        gtk_widget_get_mapped(app->window) && gtk_widget_get_mapped(app->camera_picture) &&
+        !(state & (GDK_WINDOW_STATE_ICONIFIED | GDK_WINDOW_STATE_WITHDRAWN));
+    gboolean enabled = app->camera_preview &&
+        gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->camera_preview));
+    if (!visible || !enabled) {
+        if (!enabled && (app->camera_frame || app->camera_pixels_valid)) {
+            camera_frame_close(app);
+            gtk_widget_queue_draw(app->camera_picture);
+        }
+        return G_SOURCE_CONTINUE;
+    }
+    if (!camera_frame_open(app)) return G_SOURCE_CONTINUE;
+    camera_frame_shared_t *shared = app->camera_frame;
+    uint32_t before = __atomic_load_n(&shared->sequence, __ATOMIC_ACQUIRE);
+    if ((before & 1) || before == app->camera_sequence) return G_SOURCE_CONTINUE;
+    if (!__atomic_load_n(&shared->valid, __ATOMIC_ACQUIRE)) {
+        app->camera_sequence = before;
+        app->camera_pixels_valid = FALSE;
+        gtk_widget_queue_draw(app->camera_picture);
+        return G_SOURCE_CONTINUE;
+    }
+    memcpy(app->camera_pixels, shared->bgra, WUP_CAMERA_PIXELS);
+    uint32_t after = __atomic_load_n(&shared->sequence, __ATOMIC_ACQUIRE);
+    if (before != after || (after & 1)) return G_SOURCE_CONTINUE;
+    app->camera_sequence = after;
+    app->camera_pixels_valid = TRUE;
+    gtk_widget_queue_draw(app->camera_picture);
+    return G_SOURCE_CONTINUE;
+}
+
 static gboolean monitor_tick(gpointer data) {
     App *app = data; GError *error = NULL;
     char *reply = ipc_request("{\"op\":\"ping\"}", &error);
     if (!reply) {
         gtk_label_set_text(GTK_LABEL(app->connection), "Daemon unavailable");
+        camera_frame_close(app);
+        app->camera_preview_path[0] = 0;
+        if (app->camera_status)
+            gtk_label_set_text(GTK_LABEL(app->camera_status), "Daemon unavailable");
         g_clear_error(&error); return G_SOURCE_CONTINUE;
     }
     JsonParser *parser; JsonObject *root;
@@ -446,6 +594,22 @@ static gboolean monitor_tick(gpointer data) {
     gtk_label_set_text(GTK_LABEL(app->connection), headline);
     gtk_label_set_text(GTK_LABEL(app->conn_status), headline);
     g_free(headline);
+    JsonObject *camera = json_object_get_object_member(state, "camera");
+    if (camera) {
+        const char *camera_text = json_object_get_string_member_with_default(
+            camera, "error", "");
+        if (!camera_text[0])
+            camera_text = json_object_get_string_member_with_default(
+                camera, "status", "Camera status unavailable");
+        gtk_label_set_text(GTK_LABEL(app->camera_status), camera_text);
+        const char *path = json_object_get_string_member_with_default(
+            camera, "preview_path", "");
+        if (strcmp(path, app->camera_preview_path)) {
+            camera_frame_close(app);
+            g_strlcpy(app->camera_preview_path, path,
+                      sizeof app->camera_preview_path);
+        }
+    }
     if (json_object_get_boolean_member_with_default(state, "connected", FALSE)) {
         guint buttons = (guint)json_object_get_int_member_with_default(state, "buttons", 0);
         GString *pressed = g_string_new(""); gboolean any = FALSE;
@@ -490,6 +654,16 @@ static GtkWidget *combo_text(const char *const *items, int count) {
     GtkWidget *combo = gtk_combo_box_text_new();
     for (int i = 0; i < count; i++) gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo), items[i]);
     return combo;
+}
+
+static GtkWidget *check_wrapped(const char *text) {
+    GtkWidget *button = gtk_check_button_new_with_label(text);
+    GtkWidget *label = gtk_bin_get_child(GTK_BIN(button));
+    if (GTK_IS_LABEL(label)) {
+        gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+        gtk_label_set_max_width_chars(GTK_LABEL(label), 30);
+    }
+    return button;
 }
 
 /* GtkFlowBox ignores hexpand and keeps children at their natural width,
@@ -712,8 +886,8 @@ static GtkWidget *display_frame(App *app) {
         gtk_scale_add_mark(GTK_SCALE(app->brightness), i, GTK_POS_BOTTOM, NULL);
     app->brightness_value = gtk_label_new("Auto (pad default)");
     gtk_widget_set_halign(app->brightness_value, GTK_ALIGN_START);
-    app->microphone = gtk_check_button_new_with_label("Forward GamePad microphone");
-    app->volume = gtk_check_button_new_with_label("Physical volume slider controls session audio");
+    app->microphone = check_wrapped("Forward GamePad microphone");
+    app->volume = check_wrapped("Physical volume slider controls session audio");
     gtk_widget_set_hexpand(grid, TRUE);
     g_signal_connect(app->brightness, "value-changed", G_CALLBACK(brightness_changed), app);
     grid_row(GTK_GRID(grid), 0, "Screen brightness", app->brightness);
@@ -728,7 +902,7 @@ static GtkWidget *touch_frame(App *app) {
     GtkWidget *frame = frame_new("input-touchpad-symbolic", "Touch & motion");
     GtkWidget *grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(grid), 3); gtk_grid_set_column_spacing(GTK_GRID(grid), 6);
     gtk_container_set_border_width(GTK_CONTAINER(grid), 4);
-    app->touch_mouse = gtk_check_button_new_with_label("Touchscreen controls the pointer");
+    app->touch_mouse = check_wrapped("Touchscreen controls the pointer");
     static const char *gyro_modes[] = {"Disabled", "Mouse movement", "Virtual stick"};
     app->gyro_mode = combo_text(gyro_modes, 3);
     app->gyro_sens = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 1, 400, 5);
@@ -738,6 +912,41 @@ static GtkWidget *touch_frame(App *app) {
     grid_row(GTK_GRID(grid), 2, "Gyroscope sensitivity", app->gyro_sens);
     gtk_widget_set_hexpand(grid, TRUE);
     gtk_container_add(GTK_CONTAINER(frame), grid);
+    return frame;
+}
+
+static GtkWidget *camera_section(App *app) {
+    GtkWidget *frame = frame_new("camera-web-symbolic", "Camera");
+    gtk_widget_set_size_request(frame, 270, -1);
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_container_set_border_width(GTK_CONTAINER(box), 4);
+    GtkWidget *controls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    app->camera_announce = check_wrapped("Announce");
+    app->camera_preview = check_wrapped("Preview");
+    gtk_widget_set_tooltip_text(app->camera_announce,
+        "Publish the GamePad camera through the dedicated virtual webcam.");
+    gtk_widget_set_tooltip_text(app->camera_preview,
+        "Show the latest GamePad camera frame in this section.");
+    gtk_box_pack_start(GTK_BOX(controls), app->camera_announce, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(controls), app->camera_preview, TRUE, TRUE, 0);
+    app->camera_picture = gtk_drawing_area_new();
+    gtk_widget_set_size_request(app->camera_picture, 240, 180);
+    gtk_widget_set_hexpand(app->camera_picture, TRUE);
+    gtk_style_context_add_class(gtk_widget_get_style_context(app->camera_picture),
+                                "camera-preview");
+    g_signal_connect(app->camera_picture, "draw", G_CALLBACK(camera_draw), app);
+    app->camera_status = gtk_label_new("Camera disabled");
+    gtk_label_set_xalign(GTK_LABEL(app->camera_status), 0);
+    gtk_label_set_ellipsize(GTK_LABEL(app->camera_status), PANGO_ELLIPSIZE_END);
+    app->camera_device = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(app->camera_device), "/dev/video42");
+    gtk_widget_set_tooltip_text(app->camera_device,
+        "Dedicated v4l2loopback node named exactly Wii U GamePad Camera.");
+    gtk_box_pack_start(GTK_BOX(box), controls, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), app->camera_picture, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), app->camera_status, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), app->camera_device, FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(frame), box);
     return frame;
 }
 
@@ -754,7 +963,7 @@ static GtkWidget *monitor_frame(App *app) {
 }
 
 /* Vertical dashboard rows: compact mode strip, full-width bindings,
-   three secondary sections that wrap via GtkFlowBox, then the monitor.
+   four secondary sections that wrap via GtkFlowBox, then the monitor.
    Each row keeps its natural height; the scroller is only a fallback. */
 static GtkWidget *dashboard_page(App *app) {
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
@@ -769,10 +978,19 @@ static GtkWidget *dashboard_page(App *app) {
     gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(secondary), 6);
     gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(secondary), 8);
     gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(secondary), FALSE);
+    gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(secondary), 1);
+    gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(secondary), 4);
     gtk_widget_set_hexpand(secondary, TRUE);
-    gtk_flow_box_insert(GTK_FLOW_BOX(secondary), sticks_frame(app), -1);
-    gtk_flow_box_insert(GTK_FLOW_BOX(secondary), display_frame(app), -1);
-    gtk_flow_box_insert(GTK_FLOW_BOX(secondary), touch_frame(app), -1);
+    GtkWidget *sticks = sticks_frame(app);
+    GtkWidget *display = display_frame(app);
+    GtkWidget *touch = touch_frame(app);
+    gtk_widget_set_size_request(sticks, 270, -1);
+    gtk_widget_set_size_request(display, 270, -1);
+    gtk_widget_set_size_request(touch, 270, -1);
+    gtk_flow_box_insert(GTK_FLOW_BOX(secondary), sticks, -1);
+    gtk_flow_box_insert(GTK_FLOW_BOX(secondary), display, -1);
+    gtk_flow_box_insert(GTK_FLOW_BOX(secondary), touch, -1);
+    gtk_flow_box_insert(GTK_FLOW_BOX(secondary), camera_section(app), -1);
     gtk_box_pack_start(GTK_BOX(rows), secondary, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(rows), monitor_frame(app), FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(scroll), rows);
@@ -828,6 +1046,7 @@ static void apply_css(void) {
         ".wup-settings .titlebar {background:#192532;border-bottom:1px solid #35485b;}"
         ".wup-settings .brand {font-size:14px;font-weight:bold;color:#96cdf9;}"
         ".wup-settings frame.settings-section>border {border:1px solid #35485b;border-radius:0;}"
+        ".wup-settings .camera-preview {border:1px solid #35485b;background:#09111a;}"
         ".wup-settings .section-title {font-size:14px;font-weight:bold;color:#96cdf9;}"
         ".wup-settings button,.wup-settings entry,.wup-settings combobox button {min-height:22px;padding:0 6px;border-radius:0;}"
         ".wup-settings entry {background:#0f1b27;color:#dce7f1;border:1px solid #35485b;}"
@@ -871,6 +1090,12 @@ static void app_activate(GtkApplication *application, gpointer data) {
     App *app = data; settings_t defaults; settings_defaults(&defaults); app->input = defaults.input;
     app->audio_pad_to_pc = defaults.audio_pad_to_pc; app->pad_volume_controls_pc = defaults.pad_volume_controls_pc;
     app->pad_brightness = -1;
+    app->camera_announce_enabled = defaults.camera_announce;
+    app->camera_preview_enabled = defaults.camera_preview;
+    g_strlcpy(app->camera_device_path, defaults.camera_device,
+              sizeof app->camera_device_path);
+    app->camera_frame_fd = -1;
+    if (!app->camera_pixels) app->camera_pixels = g_malloc(WUP_CAMERA_PIXELS);
     app->window = gtk_application_window_new(application);
     gtk_window_set_title(GTK_WINDOW(app->window), "WUP ThinServer Settings");
     gtk_window_set_default_size(GTK_WINDOW(app->window), 820, 450);
@@ -937,13 +1162,17 @@ static void app_activate(GtkApplication *application, gpointer data) {
     gtk_container_add(GTK_CONTAINER(app->window), overlay);
     apply_css(); size_to_workarea(GTK_WINDOW(app->window));
     gtk_widget_show_all(app->window);
-    load_current(app, FALSE); g_timeout_add(250, monitor_tick, app);
+    load_current(app, FALSE);
+    g_timeout_add(250, monitor_tick, app);
+    g_timeout_add(67, preview_tick, app);
 }
 
 int main(int argc, char **argv) {
-    App app = {0};
+    App app = {.camera_frame_fd = -1};
     GtkApplication *application = gtk_application_new("com.wozt.WupThinServerSettings", G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(application, "activate", G_CALLBACK(app_activate), &app);
     int status = g_application_run(G_APPLICATION(application), argc, argv);
+    camera_frame_close(&app);
+    g_free(app.camera_pixels);
     g_object_unref(application); return status;
 }

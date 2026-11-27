@@ -76,6 +76,9 @@ typedef struct {
     input_cfg_t input;
     int pad_brightness; /* -1: leave client setting alone; 1..6: last selected level */
     unsigned long pad_brightness_revision; /* runtime only: explicit GTK commands */
+    int camera_announce; /* expose GamePad camera through a dedicated V4L2 output */
+    int camera_preview;  /* publish latest frame for the protected Settings preview */
+    char camera_device[128]; /* dedicated v4l2loopback node; exact card label is verified */
     int audio_pc_to_pad;
     int audio_pad_to_pc;
     int pad_volume_controls_pc; /* WUP_V96_PAD_VOLUME */

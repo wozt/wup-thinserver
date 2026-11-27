@@ -14,6 +14,7 @@ A headless daemon. Modules (in `src/`):
 | `capture.c` / `capture_async.c` | X11 screen capture (XCB MIT-SHM or GetImage), libswscale to 854x480 BGRA, XFixes cursor composition |
 | `capture_kms.c` | Optional DRM/KMS backends (2/3); unused on Xvfb |
 | `audio.c` | PulseAudio monitor capture (PC→pad) and mic playback (pad→PC), 48 kHz s16 |
+| `camera.c` | Background GamePad H.264 receive/decode, protected latest-frame preview, and validated V4L2 YUYV output |
 | `input.c` | XTest key/button/wheel injection + touch gestures; optional uinput virtual gamepad; per-button shell commands and mouse buttons |
 | `x11util.c` | XRandR screens, EWMH windows, XTest helpers |
 | `i18n.c` | UI string catalog (English compiled in; JSON languages optional) |
@@ -22,6 +23,13 @@ A headless daemon. Modules (in `src/`):
 
 The daemon never touches the host desktop: it opens whatever `DISPLAY`
 points to. In the container that is the private Xvfb display.
+
+The camera worker is session-scoped and stopped before `libwupstream` closes.
+It requests one GamePad capture stream for either or both consumers, decodes
+on a dedicated thread, converts only the formats currently required, and
+keeps all frame buffers bounded. Settings reads a single 640×480 BGRA mmap
+slot protected by an odd/even sequence; Announce writes 640×480 YUYV only to
+a node whose V4L2 card label is exactly `Wii U GamePad Camera`.
 
 ### WUP ThinServer Settings (GTK3, optional Meson target)
 
@@ -60,7 +68,9 @@ Unchanged WUP Stream protocol (UDP):
 - PC → pad :50000 `H` hello/keepalive, `V` video fragments (1400-byte
   payloads of raw CABAC slice data), `A` PCM audio, `R` rumble, `Q` quit.
 - pad → PC `I` input report (128 bytes), `N` missing-packet NACKs,
-  `M` microphone.
+  `M` microphone, `C` fragmented camera H.264.
+- PC → pad hello bit requests camera capture; `K` requests encoder restart
+  after fragment loss. ThinClient advertises camera capability in `I` bit 7.
 
 Full details in [PROTOCOL.md](PROTOCOL.md) (mirrors upstream `pad/stream`).
 

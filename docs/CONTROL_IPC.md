@@ -28,10 +28,11 @@ protocol.
 | Operation | Purpose |
 |---|---|
 | `ping` | Return daemon and current controller state. |
-| `get` | Return the current input/audio configuration and state. |
+| `get` | Return the current input/audio/camera configuration and state. |
 | `validate_input` | Validate a proposed `input` object without changing state. |
 | `apply_input` | Validate, atomically save, then publish input settings live. |
 | `set_pad_brightness` | Set `pad_brightness` live: `{"op":"set_pad_brightness","level":N}` where `N` is `-1` (leave the pad's level alone) or `1`–`6` (discrete hardware levels). Persisted like other settings; does **not** reload held inputs, and republishes the brightness to a connected pad via the stream protocol. `state.backlight` reports the pad's last reported level while connected. |
+| `set_camera` | Validate, persist, and publish any supplied `camera_announce`, `camera_preview`, and `camera_device` fields without reloading held inputs. The two booleans are independent; the device must be a numbered `/dev/videoN` path. |
 | `restore_defaults` | Atomically save and apply the default input settings. |
 
 Every reply contains `ok`. Failed replies contain `error`; successful mutating
@@ -43,6 +44,12 @@ not merely the configured preference), `gamepad_available`, and a human-readable
 `apply_input` selects Desktop (`1`) or Gamepad (`0`). A Desktop→Gamepad apply
 first proves that a uinput device can be created; failure rejects the update
 without changing the valid settings file.
+
+`state.camera` always reports configured consumers, capture activity, client
+capability when known, preview/webcam availability, frame count, status/error,
+and the protected `preview_path`. The path names a mode-`0600` same-UID mmap
+file containing one seqlock-protected BGRA frame. It is local binary transport,
+not image data embedded in the JSON response.
 
 ## Live update sequence
 

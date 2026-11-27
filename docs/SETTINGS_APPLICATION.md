@@ -6,8 +6,10 @@ Meson's `-Dsettings_app=disabled` option for daemon-only builds.
 
 ## Implemented
 
-- Single-page dashboard (no tabs): bindings on the left, stacked sections
-  on the right inside one vertically scrolling area.
+- Single-page dashboard (no tabs): compact rows in one vertically scrolling
+  area. Analog sticks, Display & audio, Touch & motion, and Camera share the
+  responsive secondary row; Camera is the fourth section, immediately after
+  Touch & motion at 1280×720.
 - Complete GamePad button list — HOME included and editable like every
   other control; the ThinClient reserves only its local shortcut
   combinations (5 s hold, HOME+X, HOME+Up/Down, HOME+B), never the tap.
@@ -23,6 +25,10 @@ Meson's `-Dsettings_app=disabled` option for daemon-only builds.
   container; the live monitor shows the pad's reported backlight level.
 - Touch-as-pointer, gyroscope mode/sensitivity, microphone forwarding, and
   physical volume-slider controls.
+- Adjacent Camera Announce and Preview controls, dedicated V4L2 node field,
+  useful connection/error status, and an embedded 4:3 preview. The preview
+  reads the daemon's protected one-slot mmap at up to 15 fps and performs no
+  refresh while the section/application is hidden.
 - A live 4 Hz diagnostic view for connection state, pressed buttons, sticks,
   touch coordinates, volume, and backlight. It performs no repaint work per
   video frame.

@@ -17,6 +17,8 @@ libpangocairo-1.0-0
 libjson-glib-1.0-0
 libgtk-3-0
 libswscale8
+libavcodec61
+libavutil59
 libdrm2
 libgbm1
 libegl1

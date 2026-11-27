@@ -1,5 +1,6 @@
 #include "config.h"
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <string.h>
 
 const char *config_validate(const settings_t *s) {
@@ -28,6 +29,15 @@ const char *config_validate(const settings_t *s) {
         return "input.gyro_sens must be between 1 and 400";
     if (s->pad_brightness != -1 && (s->pad_brightness < 1 || s->pad_brightness > 6))
         return "pad_brightness must be -1 (automatic) or 1..6";
+    if ((s->camera_announce != 0 && s->camera_announce != 1) ||
+        (s->camera_preview != 0 && s->camera_preview != 1))
+        return "camera_announce and camera_preview must be 0 or 1";
+    if (strncmp(s->camera_device, "/dev/video", 10) ||
+        !s->camera_device[10])
+        return "camera_device must be a numbered /dev/video device";
+    for (const char *p = s->camera_device + 10; *p; p++)
+        if (!isdigit((unsigned char)*p))
+            return "camera_device must be a numbered /dev/video device";
     if (s->listen_port < 1 || s->listen_port > 65535)
         return "listen_port must be between 1 and 65535";
     if (s->listen_address[0]) {

@@ -60,6 +60,20 @@ if [ "$(id -u)" = "0" ]; then
         fi
         unset _uimaj _uimin
     fi
+    # Optional GamePad camera output (docker-compose.camera.yml). The host
+    # loopback node is mounted under a private name; recreate only that one
+    # node for `wup` without changing host permissions or exposing /dev.
+    if [ -e /dev/video42-host ]; then
+        read -r _camaj _camin <<<"$(ls -ln /dev/video42-host | awk '{gsub(",","",$5); print $5, $6}')"
+        if [ -n "${_camaj:-}" ] && [ -n "${_camin:-}" ]; then
+            rm -f /dev/video42
+            mknod /dev/video42 c "$_camaj" "$_camin" 2>/dev/null || true
+            chown wup:wup /dev/video42 2>/dev/null || true
+            chmod 0660 /dev/video42 2>/dev/null || true
+            echo "[wup-thin] camera output: private /dev/video42 node ready"
+        fi
+        unset _camaj _camin
+    fi
     exec setpriv --reuid=wup --regid=wup --init-groups -- \
         /usr/local/bin/wup-thin-entrypoint --session "$@"
 fi

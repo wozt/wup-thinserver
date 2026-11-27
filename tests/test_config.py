@@ -87,6 +87,20 @@ class ConfigTest(unittest.TestCase):
             r = run_check(self.home, {"pad_brightness": good})
             self.assertEqual(r.returncode, 0, (good, r.stderr))
 
+    def test_camera_settings_validation(self):
+        for key in ("camera_announce", "camera_preview"):
+            r = run_check(self.home, {key: 2})
+            self.assertEqual(r.returncode, 2, (key, r.stdout, r.stderr))
+            self.assertIn("camera_announce", r.stderr)
+        for bad in ("/dev/video", "/dev/video42/extra", "/dev/videofoo",
+                    "/dev/../video42", "/tmp/video42", "video42", ""):
+            r = run_check(self.home, {"camera_device": bad})
+            self.assertEqual(r.returncode, 2, (bad, r.stdout, r.stderr))
+            self.assertIn("camera_device", r.stderr)
+        for good in ("/dev/video0", "/dev/video42", "/dev/video999"):
+            r = run_check(self.home, {"camera_device": good})
+            self.assertEqual(r.returncode, 0, (good, r.stderr))
+
     def test_listen_port_range(self):
         for bad in (0, -1, 65536, 99999):
             r = run_check(self.home, {"listen_port": bad})

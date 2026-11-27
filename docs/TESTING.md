@@ -37,6 +37,20 @@ meson test -C build                     # unit tests (see tests/)
   `apply_input` (effective-mode reporting, Gamepad preflight rejection,
   persistence). The `'T'` pad→daemon packet path shares `input_set_mode`
   and is exercised end-to-end only with a real/fake GamePad session.
+- `tests/camera_test.c` creates a synthetic 640×480 H.264 frame and drives
+  the real camera worker. It verifies malformed-input recovery, mode-0600
+  latest-frame publication, preview pixels, independent consumers, exact
+  V4L2 label validation, YUYV delivery through controlled V4L2 syscalls,
+  black/close shutdown, and preview-file removal.
+- `tests/test_migration.py`, `test_config.py`, and `test_control.py` cover
+  missing legacy camera keys, idempotency, malformed values/paths, atomic
+  persistence, and independent Announce/Preview toggles.
+
+Validate the optional camera overlay without opening a host device:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.camera.yml config
+```
 
 ### Inside Docker (gamepad overlay)
 

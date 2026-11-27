@@ -1,6 +1,6 @@
 # Project status
 
-Updated: 2026-11-27 (WUP Homebrew V2 and camera compatibility audit)
+Updated: 2026-11-27 (GamePad camera uplink implementation)
 
 Status legend: **planned** / **in progress** / **implemented** /
 **tested automatically** / **validated on physical hardware** / **known issue**
@@ -22,9 +22,12 @@ Status legend: **planned** / **in progress** / **implemented** /
       `a082db95ba62` camera host library. Its I420, brightness, five-byte
       hello/`T`, direct endpoint, NAT isolation, camera capability, and
       disable extensions build together and all six existing tests pass.
-- [ ] **Camera integration in progress:** receive/decode, protected preview,
-      V4L2 announcement, Settings controls, Docker overlay, and synthetic
-      tests remain the active implementation increment.
+- [x] **Camera integration implemented / automatically tested:** bounded
+      background H.264 receive/decode, protected latest-frame preview, exact
+      V4L2 identity validation and YUYV delivery, Settings/IPC controls,
+      config migration, and optional non-privileged Docker overlay. Eight
+      host tests pass; Docker runtime and physical camera evidence remain
+      pending.
 
 ## Milestone 1 — Independent Linux desktop (Docker)
 
@@ -182,14 +185,14 @@ performance measurement, native install, Raspberry Pi).
 - [x] **Implemented / screenshot-verified in-container:** single-page
       dashboard reorganized into vertical rows — compact input-mode strip,
       full-width bindings (two nine-button groups share the row via a
-      GtkFlowBox size-allocate handler), three horizontally wrapped
+      GtkFlowBox size-allocate handler), four horizontally wrapped
       secondary sections, compact live-monitor strip, fixed footer.
       Directional-key rows only appear for keyboard-direction stick modes.
       Window = `_NET_WORKAREA` at 1280x720 / 1066x600 / 854x480; taskbar
       preserved; font unchanged. Fixed a GTK callback-signature crash on
       config load.
 - [x] **Implemented / automatically tested:** `listen_port` (1–65535,
-      default 50001) and `listen_address` (numeric IPv4 or empty)
+      default 50002) and `listen_address` (numeric IPv4 or empty)
       settings with validation tests; libwupstream patch
       `extend_direct_connections` adds `wupstream_open_port()` and records
       the beacon's real source port (kept updated from session packets).
@@ -222,6 +225,32 @@ performance measurement, native install, Raspberry Pi).
       secure WAN transport feasibility, physical GamePad validation
       of the QEMU appliance (ARM64 Lab profile), PC reference client,
       physical GamePad retest of the profile manager.
+
+## GamePad camera uplink
+
+- [x] **ThinClient implemented and deployed:** V2 hardware-H.264 capture,
+      bounded two-buffer fragment sender, reserved network queue capacity,
+      camera request/capability/restart protocol, and lifecycle cleanup.
+      Removing the obsolete `large=yes` screen-memory borrow fixed the
+      all-red stream regression; the normal stream recovery was confirmed on
+      physical hardware. Camera imagery itself is not yet physically
+      validated.
+- [x] **ThinServer implemented / automatically tested:** one session-scoped
+      background decoder shared by independent Announce and Preview
+      consumers; malformed input recovery; no per-frame allocation; preview
+      capped at 15 fps through a same-UID mode-0600 one-slot mmap.
+- [x] **Virtual webcam safety:** configurable numbered `/dev/videoN`, exact
+      `Wii U GamePad Camera` card-label check, 640×480 YUYV format check,
+      black-frame/close shutdown, and no accidental physical-webcam fallback.
+- [x] **Settings integration:** Camera is the fourth responsive secondary
+      section immediately after Touch & motion, with adjacent controls,
+      embedded 4:3 preview, device field, and useful status/error reporting.
+- [x] **Docker definition:** `docker-compose.camera.yml` exposes one selected
+      node under a private name; entrypoint creates a `wup`-owned alias. No
+      privileged mode and no whole-host `/dev` mount.
+- [ ] **Pending evidence:** clean Docker image build/run with the overlay,
+      Settings screenshots at 1280×720, 1066×600, and 854×480, and physical
+      GamePad camera preview/V4L2 consumer validation.
 
 ## Known issues / risks
 

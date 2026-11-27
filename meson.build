@@ -21,6 +21,8 @@ cairo = dependency('cairo')
 pangocairo = dependency('pangocairo')
 json_glib = dependency('json-glib-1.0')
 swscale = dependency('libswscale')
+avcodec = dependency('libavcodec')
+avutil = dependency('libavutil')
 drm = dependency('libdrm')
 gbm = dependency('gbm')
 egl = dependency('egl')
@@ -50,6 +52,7 @@ executable('wup-thinserver',
   'src/capture_kms.c',
   'src/capture_async.c',
   'src/audio.c',
+  'src/camera.c',
   'src/input.c',
   'src/server.c',
   'src/i18n.c',
@@ -57,7 +60,7 @@ executable('wup-thinserver',
   c_args: ['-DWUP_THIN_VERSION="' + meson.project_version() + '"'],
   include_directories: [include_directories('src')],
   dependencies: [glib, gio, x11, xrandr, xtst, xext, xfixes, xinerama, json_glib,
-                 threads, m_dep, swscale, drm, gbm, egl, gles,
+                 threads, m_dep, swscale, avcodec, avutil, drm, gbm, egl, gles,
                  xcb, xcbshm, x11xcb, pulse, cairo, pangocairo],
   link_with: wup_dep[0],
   install: true)
@@ -115,6 +118,7 @@ cap_test = executable('wup-capture-test',
 
 py = find_program('python3')
 test('config', py, args: [files('tests/test_config.py')])
+test('migration', py, args: [files('tests/test_migration.py')])
 test('geometry', py, args: [files('tests/test_geometry.py')])
 test('control-ipc', py, args: [files('tests/test_control.py')], timeout: 30)
 test('encoded-cursor', py, args: [files('tests/test_encoded_cursor.py')],
@@ -122,6 +126,14 @@ test('encoded-cursor', py, args: [files('tests/test_encoded_cursor.py')],
 test('capture-xvfb', find_program('sh'),
   args: [files('tests/run_capture_test.sh')],
   depends: cap_test, timeout: 60)
+
+camera_test = executable('wup-camera-test',
+  'tests/camera_test.c', 'src/camera.c', wup_dep[1],
+  c_args: ['-DWUP_CAMERA_TEST'],
+  include_directories: [include_directories('src')],
+  dependencies: [threads, swscale, avcodec, avutil],
+  build_by_default: false)
+test('camera-worker', camera_test, depends: camera_test, timeout: 20)
 
 if sdl2.found()
   gamepad_test = executable('wup-gamepad-test',

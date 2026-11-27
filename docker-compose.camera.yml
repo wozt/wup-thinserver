@@ -1,0 +1,20 @@
+# WUP ThinServer — optional GamePad camera overlay.
+#
+# Host setup (outside Docker), using the exact dedicated device identity:
+#   sudo modprobe v4l2loopback video_nr=42 card_label="Wii U GamePad Camera" \
+#       exclusive_caps=1
+#   docker compose -f docker-compose.yml -f docker-compose.camera.yml up -d --build
+#
+# WUP_CAMERA_DEVICE may select another numbered host node. ThinServer still
+# validates that the V4L2 card label is exactly "Wii U GamePad Camera", so an
+# unrelated physical webcam is never accepted accidentally.
+#
+# The host node is mounted as /dev/video42-host. The root entrypoint creates a
+# private /dev/video42 node with the same device numbers and grants it only to
+# the unprivileged `wup` account. Host permissions are not modified. This file
+# does not enable privileged mode and does not expose the host's whole /dev.
+
+services:
+  wup-thinserver:
+    devices:
+      - ${WUP_CAMERA_DEVICE:-/dev/video42}:/dev/video42-host

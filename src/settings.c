@@ -55,6 +55,9 @@ void settings_defaults(settings_t *s) {
     s->kbps = 10000;
     s->gop = 0;
     s->pad_brightness = -1;
+    s->camera_announce = 0;
+    s->camera_preview = 0;
+    snprintf(s->camera_device, sizeof s->camera_device, "/dev/video42");
     s->listen_port = 50002;   /* (WUP ThinClient beacons here; WUP Stream keeps 50001) */
     s->listen_address[0] = 0;
     s->audio_pc_to_pad = 1;
@@ -159,6 +162,10 @@ settings_t *settings_load(void) {
     s->kbps = json_int(root, "kbps", s->kbps);
     s->gop = 0; /* Ignore old saved values. */
     s->pad_brightness = json_int(root, "pad_brightness", -1);
+    s->camera_announce = json_int(root, "camera_announce", 0);
+    s->camera_preview = json_int(root, "camera_preview", 0);
+    if (json_object_has_member(root, "camera_device"))
+        json_str(root, "camera_device", s->camera_device, sizeof s->camera_device);
     s->audio_pc_to_pad = json_int(root, "audio_pc_to_pad", s->audio_pc_to_pad);
     s->audio_pad_to_pc = json_int(root, "audio_pad_to_pc", s->audio_pad_to_pc);
     s->pad_volume_controls_pc = json_int(root, "pad_volume_controls_pc", s->pad_volume_controls_pc);
@@ -295,6 +302,9 @@ static char *settings_json(const settings_t *s) {
     json_object_set_int_member(root, "crf", s->crf);
     json_object_set_int_member(root, "kbps", s->kbps);
     json_object_set_int_member(root, "pad_brightness", s->pad_brightness);
+    json_object_set_int_member(root, "camera_announce", s->camera_announce);
+    json_object_set_int_member(root, "camera_preview", s->camera_preview);
+    json_object_set_string_member(root, "camera_device", s->camera_device);
     json_object_set_int_member(root, "audio_pc_to_pad", s->audio_pc_to_pad);
     json_object_set_int_member(root, "audio_pad_to_pc", s->audio_pad_to_pc);
     json_object_set_int_member(root, "pad_volume_controls_pc", s->pad_volume_controls_pc);

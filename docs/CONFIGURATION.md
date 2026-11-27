@@ -22,7 +22,7 @@ valid file unchanged.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `pad_ip` | string | `""` | GamePad IP. Empty = accept the first pad announcing itself. Set it to pin one client. |
-| `listen_port` | int | `50001` | UDP port the daemon binds for `B` beacons (LAN broadcast and direct unicast endpoints). 1–65535. |
+| `listen_port` | int | `50002` | UDP port the daemon binds for `B` beacons (LAN broadcast and direct unicast endpoints). 1–65535. ThinServer uses a distinct default from WUP Stream. |
 | `listen_address` | string | `""` | Numeric IPv4 address to bind the beacon socket to; empty = all interfaces. Restrict it (e.g. the LAN address) to limit exposure. Hostnames are not accepted — resolve to an IPv4 literal. |
 | `source_type` | int | `0` | `0` screen (whole display), `1` window, `2` region. ThinServer uses `0`. |
 | `aspect` | int | `1` | `0` stretch, `1` letterbox, `2` crop — how the desktop maps into 854x480. |
@@ -34,6 +34,9 @@ valid file unchanged.
 | `audio_pad_to_pc` | int | `0` | Play the GamePad microphone on the session. |
 | `pad_volume_controls_pc` | int | `1` | Physical volume slider → PulseAudio sink volume (hysteresis-filtered). |
 | `pad_brightness` | int | `-1` | GamePad hardware backlight: `-1` leave the pad's level alone, `1`–`6` discrete levels. Applied live to a connected pad, persisted, and adjustable from Settings. `-1` also means "not managed" — the pad keeps its own setting. |
+| `camera_announce` | int | `0` | Request the GamePad camera and publish decoded 640×480 YUYV frames to the dedicated V4L2 output. Opt-in and independent from preview. |
+| `camera_preview` | int | `0` | Request the GamePad camera and publish the latest decoded frame to the protected Settings preview. Opt-in and independent from Announce. |
+| `camera_device` | string | `"/dev/video42"` | Numbered V4L2 output node. ThinServer accepts it only when its card label is exactly `Wii U GamePad Camera`; physical/unrelated webcams are rejected. |
 | `audio_monitor` | string | `"default"` | PulseAudio monitor source; `"default"` = default sink's monitor. |
 | `autostart_stream` | int | `1` | Begin streaming as soon as a client connects. |
 | `auto_reconnect` | int | `1` | Keep waiting for the client after a disconnect (session persists). |
@@ -129,6 +132,21 @@ that cannot be satisfied is rejected and Desktop stays active.
 `WUPSTREAM_CRF`, `WUPSTREAM_KBPS`, `WUPSTREAM_X264` (`key=value:...`),
 `WUPSTREAM_DEBUG=1`, `WUPSTREAM_DROP=n` (loss test), `WUPSTREAM_DUMP=file`,
 `WUPSTREAM_PHASE_MS`, `WUP_CAPTURE_ASYNC=0`, `WUPSTREAMD_DEBUG=1`.
+
+## GamePad camera
+
+Camera capture is disabled by default. Announce and Preview may be enabled
+separately; when both are enabled they share one H.264 decoder and capture
+request. Preview uses one latest-frame mmap slot under the same-UID runtime
+directory, not JSON or base64, and the Settings process stops reading it when
+its camera section or window is not visible. Disabling both consumers stops
+the client camera request, flushes the decoder, invalidates the preview, and
+writes one black frame before closing an active virtual webcam.
+
+For Docker, use `docker-compose.camera.yml`; for native installs, create a
+dedicated v4l2loopback device with the exact label documented in
+[INSTALLATION.md](INSTALLATION.md). The network stream remains trusted-LAN
+only; enabling camera does not add authentication or encryption.
 
 ## Desktop/session settings (launcher, not the daemon)
 

@@ -18,6 +18,8 @@ Migrations applied:
     (right stick scrolls instead of moving the pointer).
   * input.left_stick_mouse -> 1 (left stick moves the pointer).
   * input.mouse_buttons[L3/R3] -> 1/3 when unset (click like ZL/ZR).
+  * camera_announce/camera_preview -> 0 and camera_device -> /dev/video42
+    when absent. Camera capture therefore remains opt-in after migration.
 
 A file already matching the new defaults is left untouched, so the script
 is safe to run on every boot.
@@ -52,6 +54,12 @@ def main() -> int:
     if cfg.get("listen_port") == 50001:
         cfg["listen_port"] = 50002
         changed = True
+
+    for key, value in (("camera_announce", 0), ("camera_preview", 0),
+                       ("camera_device", "/dev/video42")):
+        if key not in cfg:
+            cfg[key] = value
+            changed = True
 
     inp = cfg.get("input")
     if not isinstance(inp, dict):

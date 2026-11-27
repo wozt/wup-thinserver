@@ -71,6 +71,34 @@ static gboolean int_member(JsonObject *o, const char *name, int *out,
     return TRUE;
 }
 
+static gboolean string_member(JsonObject *o, const char *name, char *out,
+                              size_t size, GError **error) {
+    if (!json_object_has_member(o, name)) return TRUE;
+    JsonNode *node = json_object_get_member(o, name);
+    if (!JSON_NODE_HOLDS_VALUE(node) ||
+        json_node_get_value_type(node) != G_TYPE_STRING) {
+        set_protocol_error(error, "string setting has the wrong type");
+        return FALSE;
+    }
+    const char *value = json_node_get_string(node);
+    if (!value || strlen(value) >= size) {
+        set_protocol_error(error, "string setting is too long");
+        return FALSE;
+    }
+    g_strlcpy(out, value, size);
+    return TRUE;
+}
+
+static gboolean parse_camera(JsonObject *object, settings_t *settings,
+                             GError **error) {
+    return bool_member(object, "camera_announce", &settings->camera_announce,
+                       error) &&
+           bool_member(object, "camera_preview", &settings->camera_preview,
+                       error) &&
+           string_member(object, "camera_device", settings->camera_device,
+                         sizeof settings->camera_device, error);
+}
+
 static gboolean chord_valid(const char *value) {
     if (!value || !value[0]) return TRUE;
     gchar **parts = g_strsplit(value, "+", 0);
@@ -255,6 +283,12 @@ static char *make_response(control_t *control, gboolean ok, const char *message,
         json_builder_add_int_value(b, control->settings->pad_volume_controls_pc);
         json_builder_set_member_name(b, "pad_brightness");
         json_builder_add_int_value(b, control->settings->pad_brightness);
+        json_builder_set_member_name(b, "camera_announce");
+        json_builder_add_boolean_value(b, control->settings->camera_announce);
+        json_builder_set_member_name(b, "camera_preview");
+        json_builder_add_boolean_value(b, control->settings->camera_preview);
+        json_builder_set_member_name(b, "camera_device");
+        json_builder_add_string_value(b, control->settings->camera_device);
         json_builder_end_object(b);
     }
     json_builder_set_member_name(b, "state"); json_builder_begin_object(b);
@@ -277,6 +311,29 @@ static char *make_response(control_t *control, gboolean ok, const char *message,
     json_builder_add_boolean_value(b, gamepad_available);
     json_builder_set_member_name(b, "input_status");
     json_builder_add_string_value(b, input_status);
+    camera_status_t camera;
+    char preview_path[256];
+    server_camera_snapshot(control->server, &camera, preview_path,
+                           sizeof preview_path);
+    json_builder_set_member_name(b, "camera");
+    json_builder_begin_object(b);
+#define ADD_CAMERA_BOOL(name) json_builder_set_member_name(b, #name); json_builder_add_boolean_value(b, camera.name)
+    ADD_CAMERA_BOOL(configured_announce);
+    ADD_CAMERA_BOOL(configured_preview);
+    ADD_CAMERA_BOOL(capture_active);
+    ADD_CAMERA_BOOL(client_capable);
+    ADD_CAMERA_BOOL(frame_available);
+    ADD_CAMERA_BOOL(webcam_available);
+#undef ADD_CAMERA_BOOL
+    json_builder_set_member_name(b, "frames");
+    json_builder_add_int_value(b, (gint64)camera.frames);
+    json_builder_set_member_name(b, "status");
+    json_builder_add_string_value(b, camera.status);
+    json_builder_set_member_name(b, "error");
+    json_builder_add_string_value(b, camera.error);
+    json_builder_set_member_name(b, "preview_path");
+    json_builder_add_string_value(b, preview_path);
+    json_builder_end_object(b);
     if (connected) {
 #define ADD_REPORT(name) json_builder_set_member_name(b, #name); json_builder_add_int_value(b, input.name)
         ADD_REPORT(buttons); ADD_REPORT(lx); ADD_REPORT(ly); ADD_REPORT(rx);
@@ -323,15 +380,25 @@ static char *handle_request(control_t *control, const char *data, gssize length)
         candidate.input = defaults.input;
         candidate.audio_pad_to_pc = defaults.audio_pad_to_pc;
         candidate.pad_volume_controls_pc = defaults.pad_volume_controls_pc;
+        candidate.camera_announce = defaults.camera_announce;
+        candidate.camera_preview = defaults.camera_preview;
+        snprintf(candidate.camera_device, sizeof candidate.camera_device,
+                 "%s", defaults.camera_device);
     } else if (!strcmp(op, "validate_input") || !strcmp(op, "apply_input")) {
         JsonNode *input_node = json_object_get_member(request, "input");
         if (!input_node || !JSON_NODE_HOLDS_OBJECT(input_node) ||
             !parse_input(json_node_get_object(input_node), &control->settings->input,
                          &candidate.input, &error) ||
             !bool_member(request, "audio_pad_to_pc", &candidate.audio_pad_to_pc, &error) ||
-            !bool_member(request, "pad_volume_controls_pc", &candidate.pad_volume_controls_pc, &error)) {
+            !bool_member(request, "pad_volume_controls_pc", &candidate.pad_volume_controls_pc, &error) ||
+            !parse_camera(request, &candidate, &error)) {
             char *reply = make_response(control, FALSE,
                 error ? error->message : "input object is required", FALSE);
+            g_clear_error(&error); g_object_unref(parser); return reply;
+        }
+    } else if (!strcmp(op, "set_camera")) {
+        if (!parse_camera(request, &candidate, &error)) {
+            char *reply = make_response(control, FALSE, error->message, FALSE);
             g_clear_error(&error); g_object_unref(parser); return reply;
         }
     } else if (!strcmp(op, "set_pad_brightness")) {
@@ -383,13 +450,14 @@ static char *handle_request(control_t *control, const char *data, gssize length)
         g_clear_error(&error); g_object_unref(parser); return reply;
     }
     *control->settings = candidate;
-    if (!strcmp(op, "set_pad_brightness"))
+    if (!strcmp(op, "set_pad_brightness") || !strcmp(op, "set_camera"))
         server_sync_settings(control->server);   /* no input reload: held buttons stay down */
     else
         server_apply_input_keys(control->server);
     char *reply = make_response(control, TRUE,
         !strcmp(op, "restore_defaults") ? "defaults restored" :
         !strcmp(op, "set_pad_brightness") ? "pad brightness updated" :
+        !strcmp(op, "set_camera") ? "camera settings applied" :
         "input settings applied",
         TRUE);
     g_object_unref(parser);

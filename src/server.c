@@ -3,6 +3,7 @@
 #include "capture.h"
 #include "capture_async.h" /* WUP_V912_CAPTURE_OPTIMIZATION */
 #include "audio.h"
+#include "camera.h"
 #include "input.h"
 #include "x11util.h"
 #include "wupstream.h"
@@ -50,7 +51,28 @@ struct server_t {
     int active_input_mode;
     int gamepad_available;
     char input_status[160];
+    camera_status_t camera_status;
+    char camera_preview_path[256];
 };
+
+static void publish_camera_status(server_t *srv, camera_t *camera) {
+    camera_status_t status;
+    camera_status(camera, &status);
+    pthread_mutex_lock(&srv->mtx);
+    srv->camera_status = status;
+    snprintf(srv->camera_preview_path, sizeof srv->camera_preview_path,
+             "%s", camera_preview_path(camera));
+    pthread_mutex_unlock(&srv->mtx);
+}
+
+static void clear_camera_status(server_t *srv) {
+    pthread_mutex_lock(&srv->mtx);
+    memset(&srv->camera_status, 0, sizeof srv->camera_status);
+    snprintf(srv->camera_status.status, sizeof srv->camera_status.status,
+             "Camera inactive");
+    srv->camera_preview_path[0] = 0;
+    pthread_mutex_unlock(&srv->mtx);
+}
 
 static void set_status(server_t *srv, const char *fmt, ...) {
     va_list ap;
@@ -351,7 +373,23 @@ static void *server_thread(void *arg) {
         pthread_mutex_unlock(&srv->mtx);
         wupstream_set_input_mode(pad, srv->active_input_mode);
 
+        camera_t *camera = camera_start(pad, s->camera_device);
+        if (camera) {
+            camera_set_consumers(camera, s->camera_announce, s->camera_preview,
+                                 s->camera_device);
+            publish_camera_status(srv, camera);
+        } else {
+            clear_camera_status(srv);
+            pthread_mutex_lock(&srv->mtx);
+            snprintf(srv->camera_status.status, sizeof srv->camera_status.status,
+                     "Camera worker could not start");
+            snprintf(srv->camera_status.error, sizeof srv->camera_status.error,
+                     "Camera decoder or protected preview transport is unavailable");
+            pthread_mutex_unlock(&srv->mtx);
+        }
+
         double audio_acc = 0, audio_last_t = 0;
+        double camera_status_since = 0;
         int frame_count = 0;
         wupstream_input_t in;
         uint32_t prev_btns = 0;
@@ -369,14 +407,19 @@ static void *server_thread(void *arg) {
         while (srv->running && srv->want_stream) {
             pthread_mutex_lock(&srv->mtx);
             int rst = srv->restart_capture, rlk = srv->reload_keys, rc = srv->reconnect, cg = srv->calib_gyro;
+            int camera_settings_changed = 0;
             srv->restart_capture = srv->reload_keys = srv->reconnect = srv->calib_gyro = 0;
             if (seen_generation != srv->settings_generation) {
                 active_settings = srv->staged_settings;
                 seen_generation = srv->settings_generation;
                 /* Live GamePad-only black/test toggles must redraw. */
                 static_ok = 0;
+                camera_settings_changed = 1;
             }
             pthread_mutex_unlock(&srv->mtx);
+            if (camera_settings_changed)
+                camera_set_consumers(camera, s->camera_announce,
+                                     s->camera_preview, s->camera_device);
             if (rc) break;
             if (s->pad_brightness_revision != brightness_revision) {
                 brightness_revision = s->pad_brightness_revision;
@@ -419,6 +462,12 @@ static void *server_thread(void *arg) {
                 wupstream_set_input_mode(pad, srv->active_input_mode);
             }
             if (cg && ictx) { input_calib_start(ictx); set_status(srv, "gyro calibration: keep the pad flat and still..."); }
+
+            double camera_now = v98_clock();
+            if (camera && camera_now - camera_status_since >= 0.25) {
+                publish_camera_status(srv, camera);
+                camera_status_since = camera_now;
+            }
 
             /* Main thread only reads borrowed frames from the capture worker.
              * No additional frame memcpy is performed before the encoder. */
@@ -649,6 +698,8 @@ static void *server_thread(void *arg) {
         if (have_aout) audio_out_stop(&aout);
         if (have_ain) audio_in_stop(&ain);
         if (ictx) input_free(ictx);
+        camera_stop(camera);
+        clear_camera_status(srv);
         wupstream_close(pad);
 
         if (lost) {
@@ -693,6 +744,8 @@ server_t *server_new(settings_t *s) {
     memcpy(srv->last_ui_gyro_bias, s->input.gyro_bias,
            sizeof srv->last_ui_gyro_bias);
     srv->settings_generation = 1;
+    snprintf(srv->camera_status.status, sizeof srv->camera_status.status,
+             "Camera inactive");
     srv->active_input_mode = INMODE_KBMOUSE;
     char gamepad_error[160];
     srv->gamepad_available = input_probe_gamepad(gamepad_error, sizeof gamepad_error) == 0;
@@ -760,6 +813,16 @@ void server_input_mode_snapshot(server_t *srv, int *mode, int *gamepad_available
     if (gamepad_available) *gamepad_available = srv->gamepad_available;
     if (status && status_size)
         snprintf(status, status_size, "%s", srv->input_status);
+    pthread_mutex_unlock(&srv->mtx);
+}
+
+void server_camera_snapshot(server_t *srv, camera_status_t *status,
+                            char *preview_path, size_t path_size) {
+    if (!srv) return;
+    pthread_mutex_lock(&srv->mtx);
+    if (status) *status = srv->camera_status;
+    if (preview_path && path_size)
+        snprintf(preview_path, path_size, "%s", srv->camera_preview_path);
     pthread_mutex_unlock(&srv->mtx);
 }
 

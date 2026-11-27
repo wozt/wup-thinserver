@@ -86,6 +86,49 @@ class ControlTest(unittest.TestCase):
         self.assertIn(response["state"]["input_mode"], ("desktop", "gamepad"))
         self.assertIn("gamepad_available", response["state"])
         self.assertTrue(response["state"]["input_status"])
+        self.assertFalse(response["config"]["camera_announce"])
+        self.assertFalse(response["config"]["camera_preview"])
+        self.assertEqual(response["config"]["camera_device"], "/dev/video42")
+        self.assertIn("camera", response["state"])
+        self.assertEqual(response["state"]["camera"]["status"], "Camera inactive")
+
+    def test_camera_controls_are_independent_and_validated(self):
+        before = self.config_path.read_bytes()
+        for payload in (
+            {"op": "set_camera", "camera_announce": "yes"},
+            {"op": "set_camera", "camera_preview": 7},
+            {"op": "set_camera", "camera_device": "/dev/video42/other"},
+            {"op": "set_camera", "camera_device": "/dev/video"},
+        ):
+            response = self.request(payload)
+            self.assertFalse(response["ok"], (payload, response))
+            self.assertEqual(self.config_path.read_bytes(), before)
+
+        response = self.request({
+            "op": "set_camera", "camera_announce": True,
+            "camera_preview": False, "camera_device": "/dev/video43",
+        })
+        self.assertTrue(response["ok"], response)
+        saved = json.loads(self.config_path.read_text())
+        self.assertEqual(saved["camera_announce"], 1)
+        self.assertEqual(saved["camera_preview"], 0)
+        self.assertEqual(saved["camera_device"], "/dev/video43")
+
+        response = self.request({
+            "op": "set_camera", "camera_announce": False,
+            "camera_preview": True,
+        })
+        self.assertTrue(response["ok"], response)
+        saved = json.loads(self.config_path.read_text())
+        self.assertEqual(saved["camera_announce"], 0)
+        self.assertEqual(saved["camera_preview"], 1)
+        self.assertEqual(saved["camera_device"], "/dev/video43")
+
+        restored = self.request({
+            "op": "set_camera", "camera_announce": False,
+            "camera_preview": False, "camera_device": "/dev/video42",
+        })
+        self.assertTrue(restored["ok"], restored)
 
     def test_gamepad_mode_preflight_and_persistence(self):
         response = self.request({"op": "get"})
@@ -151,6 +194,9 @@ class ControlTest(unittest.TestCase):
         self.assertTrue(response["ok"])
         self.assertEqual(response["config"]["input"]["deadzone"], 120)
         self.assertEqual(response["config"]["input"]["commands"][2], "onboard-toggle")
+        self.assertFalse(response["config"]["camera_announce"])
+        self.assertFalse(response["config"]["camera_preview"])
+        self.assertEqual(response["config"]["camera_device"], "/dev/video42")
 
 
 if __name__ == "__main__":

@@ -19,7 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxinerama-dev libxcb1-dev libxcb-shm0-dev libx11-xcb-dev \
         libpulse-dev libcairo2-dev libpango1.0-dev libjson-glib-dev \
         libgtk-3-dev \
-        libswscale-dev libdrm-dev libgbm-dev libegl-dev libgles-dev \
+        libswscale-dev libavcodec-dev libavutil-dev \
+        libdrm-dev libgbm-dev libegl-dev libgles-dev \
         nasm \
     && rm -rf /var/lib/apt/lists/*
 
@@ -57,7 +58,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxcb1 libxcb-shm0 libx11-xcb1 \
         libpulse0 libcairo2 libpangocairo-1.0-0 libjson-glib-1.0-0 \
         libgtk-3-0 \
-        libswscale8 libdrm2 libgbm1 libegl1 libgles2 \
+        libswscale8 libavcodec61 libavutil59 \
+        libdrm2 libgbm1 libegl1 libgles2 \
         libpulse0 \
     && rm -rf /var/lib/apt/lists/*
 

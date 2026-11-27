@@ -106,6 +106,38 @@ What it does **not** do — read before relying on it:
 Switch modes live from the GamePad (HOME+X) or in Settings — the choice
 is persisted and applies without a restart.
 
+### GamePad camera (optional virtual webcam)
+
+Camera capture is off by default and does not require a Docker device when
+only the embedded Settings preview is used. To expose the camera as a virtual
+webcam, create one dedicated host v4l2loopback node with the exact identity
+ThinServer validates:
+
+```sh
+sudo modprobe v4l2loopback video_nr=42 \
+  card_label="Wii U GamePad Camera" exclusive_caps=1
+v4l2-ctl --device=/dev/video42 --all | grep 'Card type'
+```
+
+Then add the camera overlay:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.camera.yml up -d --build
+```
+
+The overlay exposes only the selected node as `/dev/video42-host`. The root
+provisioning phase creates a private `/dev/video42` node with the same device
+numbers for the unprivileged `wup` account, then drops privileges. It does not
+use `privileged`, mount the whole host `/dev`, or change host-node ownership.
+Set `WUP_CAMERA_DEVICE=/dev/videoN` when the dedicated host node has another
+number. The Gamepad and camera overlays can be combined by passing all three
+Compose files. An unrelated webcam is rejected even if it is accidentally
+mapped because its V4L2 card label will not match `Wii U GamePad Camera`.
+
+For a native install, load the same loopback module and grant the `wup` user
+write access through the host's normal `video` group/device policy. Preview
+alone needs no loopback module.
+
 ### Installing extra packages
 
 ```sh
