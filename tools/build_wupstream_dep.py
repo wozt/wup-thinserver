@@ -222,6 +222,33 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
             raise RuntimeError(f"Unexpected pinned source: {code}")
         text = text.replace(sig_old, sig_new, 1)
 
+    # session socket endpoint: in pad_ip mode bind it to the configured
+    # port/address so replies share the endpoint clients dialed (ephemeral
+    # fallback when the port is busy); in discovery mode it stays unbound
+    # until the 'B' beacon socket is adopted as the session socket below.
+    sock_old = """    w->sock = (int)socket(AF_INET, SOCK_DGRAM, 0);                   /* (its own port: several GamePads, several programs) */
+    struct sockaddr_in me = { 0 };
+    me.sin_family = AF_INET;
+    if (bind(w->sock, (struct sockaddr *)&me, sizeof me)) { closesocket(w->sock); free(w); return 0; }"""
+    sock_new = """    w->sock = (int)socket(AF_INET, SOCK_DGRAM, 0);
+    struct sockaddr_in me = { 0 };
+    me.sin_family = AF_INET;
+    if (ip) {
+        me.sin_port = htons(port > 0 && port < 65536 ? port : 50001);
+        if (bind_addr && bind_addr[0]) {
+            unsigned long a = inet_addr(bind_addr);
+            me.sin_addr.s_addr = a == INADDR_NONE ? htonl(INADDR_ANY) : a;
+        }
+        if (bind(w->sock, (struct sockaddr *)&me, sizeof me)) {   /* busy: ephemeral fallback */
+            memset(&me, 0, sizeof me); me.sin_family = AF_INET;
+            if (bind(w->sock, (struct sockaddr *)&me, sizeof me)) { closesocket(w->sock); free(w); return 0; }
+        }
+    }"""
+    if sock_new not in text:
+        if text.count(sock_old) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(sock_old, sock_new, 1)
+
     # discovery socket: configurable port + optional bind address
     port_old = "        me.sin_port = htons(50001);"
     port_new = ("        me.sin_port = htons(port > 0 && port < 65536 ? port : 50001);\n"
@@ -244,6 +271,21 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
         if text.count(beacon_old) != 1:
             raise RuntimeError(f"Unexpected pinned source: {code}")
         text = text.replace(beacon_old, beacon_new, 1)
+
+    # adopt the discovery socket as the session socket once the peer is
+    # known: H/V/A/R/Q replies then originate from the exact endpoint the
+    # client dialed (stable source port — safe for endpoint-dependent NAT
+    # filtering), and post-session 'B' beacons land on the same socket for
+    # the defined rebinding path. Failure still cleans up both fds.
+    adopt_old = """        closesocket(find);
+        if (!ok) { wupstream_close(w); return 0; }"""
+    adopt_new = """        if (!ok) { closesocket(find); wupstream_close(w); return 0; }
+        closesocket(w->sock);
+        w->sock = find;"""
+    if adopt_new not in text:
+        if text.count(adopt_old) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(adopt_old, adopt_new, 1)
 
     # keep the peer port fresh only from validated session packets: an
     # arbitrary datagram from the same IP must not redirect the session.
