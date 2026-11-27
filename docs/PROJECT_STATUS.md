@@ -93,10 +93,15 @@ performance measurement, native install, Raspberry Pi).
       systemd unit), Dockerfile slimmed to reuse them.
 - [x] **ARM64 cross-build:** `scripts/build-arm64.sh` + meson cross file;
       aarch64 ELF binaries verified under qemu-user.
-- [~] **QEMU ARM64 appliance:** image builder + lifecycle scripts done;
-      `build/images/wup-thinserver-qemu-arm64.qcow2` boots Debian 13
-      arm64; in-guest provisioning and stream validation in progress.
-      See docs/QEMU.md.
+- [x] **QEMU ARM64 appliance (QEMU-validated):**
+      `build/images/wup-thinserver-qemu-arm64.qcow2` (~3.2 GiB used of
+      20 GiB) boots Debian 13 arm64 headless; offline chroot
+      provisioning (~10 min vs ~1 h TCG first-boot); full XFCE + Onboard
+      + Firefox ESR + settings app as `wup`; WUP stream validated
+      through slirp UDP hostfwd 5080→50001 (85 H, 1689 V/257 uniq
+      frames, 588 A, T ack via fake_pad); persistence across reboot
+      verified; admin SSH on host :2222. Physical GamePad test pending —
+      see docs/QEMU.md for the connection profile.
 - **Known limitation:** GamePad raw-CABAC reconstruction for FFmpeg has not
   yet been demonstrated. QEMU results will not be treated as physical Pi
   performance or VideoCore compatibility evidence.
@@ -201,9 +206,9 @@ performance measurement, native install, Raspberry Pi).
       5080), full session (V/A/N/T) through NAT, strict
       address-and-port-dependent filtering, multi-client turn-taking.
 - [ ] **Pending:** NAT mapping-expiry timing tests, symmetric NAT,
-      secure WAN transport feasibility, QEMU in-guest validation,
-      PC reference client, physical GamePad retest of the profile
-      manager.
+      secure WAN transport feasibility, physical GamePad validation
+      of the QEMU appliance (ARM64 Lab profile), PC reference client,
+      physical GamePad retest of the profile manager.
 
 ## Known issues / risks
 

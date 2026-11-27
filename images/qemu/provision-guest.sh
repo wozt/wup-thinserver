@@ -8,10 +8,12 @@ WUP=/opt/wup
 LOG(){ echo "[provision-guest] $*"; }
 
 LOG "installing runtime packages"
+dpkg --configure -a 2>/dev/null || true   # recover from an interrupted run
 apt-get update -qq
-xargs -a "$WUP/packages/runtime.txt" apt-get install -y -qq
+pkgs() { grep -vE '^\s*(#|$)' "$1"; }
+apt-get install -y -qq $(pkgs "$WUP/packages/runtime.txt")
 LOG "installing desktop packages"
-xargs -a "$WUP/packages/desktop.txt" apt-get install -y -qq
+apt-get install -y -qq $(pkgs "$WUP/packages/desktop.txt")
 
 # ThinServer binaries + helpers were unpacked to / by the payload tarball.
 [ -x /usr/local/bin/wup-thinserver ] || { echo "missing /usr/local/bin/wup-thinserver"; exit 1; }

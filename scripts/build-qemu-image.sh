@@ -70,7 +70,12 @@ install -m 644 "$ROOT/packaging/systemd/wup-thinserver.service" \
 cp "$ROOT/provisioning/packages/runtime.txt" "$ROOT/provisioning/packages/desktop.txt" \
    "$PAYLOAD_STAGE/opt/wup/packages/"
 install -m 755 "$ROOT/images/qemu/provision-guest.sh" "$PAYLOAD_STAGE/opt/wup/provision-guest.sh"
-tar -C "$PAYLOAD_STAGE" -czf "$SEEDDIR/payload.tar.gz" .
+# NOTE: never archive "." — mktemp -d is mode 700 and tar would chmod 700
+# the guest "/" on extraction. List top-level dirs explicitly and force
+# root ownership so host uids don't leak into the image.
+tar --owner=0 --group=0 -C "$PAYLOAD_STAGE" -czf "$SEEDDIR/payload.tar.gz" \
+    usr etc opt
+cp "$SEEDDIR/payload.tar.gz" "$IMGDIR/qemu-arm64-payload.tar.gz"
 log "payload: $(du -h "$SEEDDIR/payload.tar.gz" | cut -f1)"
 
 # ---------- admin SSH key -------------------------------------------------------
@@ -96,10 +101,10 @@ users:
       - ${PUB}
 ssh_pwauth: false
 package_update: false
-runcmd:
-  - mkdir -p /var/lib/cloud/seed/nocloud
-  - tar -xzf /var/lib/cloud/seed/nocloud/payload.tar.gz -C /
-  - bash /opt/wup/provision-guest.sh
+# No runcmd: the image is fully provisioned OFFLINE by
+# scripts/provision-qemu-image.sh (qemu-nbd + arm64 chroot) before first
+# boot, so cloud-init only sets identity/SSH here — first boot takes
+# seconds instead of an hour of TCG apt.
 EOF
 cat > "$SEEDDIR/meta-data" <<'EOF'
 instance-id: wup-thinserver-qemu-arm64-001
@@ -108,9 +113,9 @@ EOF
 
 log "building seed image"
 xorriso -as mkisofs -quiet -V cidata -J -R -o "$SEED" \
-    "$SEEDDIR/user-data" "$SEEDDIR/meta-data" "$SEEDDIR/payload.tar.gz" 2>/dev/null \
+    "$SEEDDIR/user-data" "$SEEDDIR/meta-data" 2>/dev/null \
     || xorrisofs -o "$SEED" -V cidata -J -R \
-       "$SEEDDIR/user-data" "$SEEDDIR/meta-data" "$SEEDDIR/payload.tar.gz"
+       "$SEEDDIR/user-data" "$SEEDDIR/meta-data"
 
 # ---------- final disk image -------------------------------------------------------
 if [ "$REBUILD" = 1 ] || [ ! -f "$OUT" ]; then
@@ -119,6 +124,13 @@ if [ "$REBUILD" = 1 ] || [ ! -f "$OUT" ]; then
     qemu-img resize "$OUT" "$DISK_SIZE"
 else
     log "reusing existing $OUT (--rebuild to recreate)"
+fi
+
+# ---------- offline provisioning ----------------------------------------------------
+# Mount via qemu-nbd and run provision-guest.sh in an arm64 chroot
+# (qemu-aarch64-static binfmt) — ~10x faster than first-boot apt under TCG.
+if [ "${SKIP_PROVISION:-0}" != "1" ]; then
+    "$ROOT/scripts/provision-qemu-image.sh" "$OUT" "$IMGDIR/qemu-arm64-payload.tar.gz"
 fi
 log "image: $OUT ($(du -h "$OUT" | cut -f1))"
 log "next: ./scripts/run-qemu.sh"

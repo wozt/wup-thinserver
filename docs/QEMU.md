@@ -40,15 +40,16 @@ What it does:
    toolchain).
 3. Generates a per-build SSH admin key pair
    (`build/images/qemu-admin-key`, git-ignored).
-4. Builds a cloud-init seed (`build/images/seed.img`) that:
-   - creates the `wup` user and the `admin` user,
-   - installs `provisioning/packages/desktop.txt` + runtime packages,
-   - runs `provisioning/session/entrypoint.sh` equivalent setup
-     (virtual display, D-Bus, PulseAudio null sink, XFCE session,
-     Onboard, settings shortcut) via the native systemd units,
-   - enables `wup-thinserver.service` at boot.
-5. Resizes the disk to 20 GiB and writes
-   `build/images/wup-thinserver-qemu-arm64.qcow2` (~1.1 GiB used).
+4. Builds a minimal cloud-init seed (`build/images/seed.img`): admin
+   user + SSH key + hostname only.
+5. Resizes the disk to 20 GiB, writes
+   `build/images/wup-thinserver-qemu-arm64.qcow2`, then provisions it
+   OFFLINE via `scripts/provision-qemu-image.sh`: the image is mounted
+   with qemu-nbd and `images/qemu/provision-guest.sh` runs inside an
+   arm64 chroot (qemu-aarch64-static binfmt). arm64 apt under qemu-user
+   takes ~10 minutes vs ~1 h+ for first-boot apt under full-system TCG.
+   `SKIP_PROVISION=1` skips this step (cloud-init fallback removed —
+   always provision offline).
 
 Re-running the script re-provisions from the pristine cloud image;
 existing VM data is kept only if you reuse the qcow2 (the script
@@ -122,11 +123,36 @@ Guest-side tunables (`DESKTOP_WIDTH`, `DESKTOP_HEIGHT`,
 `DISPLAY_NUM`, `KEYBOARD_LAYOUT`, `WUP_THIN_CONFIG`) are set through a
 systemd drop-in written by `images/qemu/provision-guest.sh`.
 
-## Validation performed
+## Validation performed (this build)
 
-See `docs/PROJECT_STATUS.md` and `docs/TESTING.md` for the current
-validation state (protocol exchange through the forwarded port,
-persistence across reboot, Docker regression).
+- Guest boots Debian 13 arm64 to multi-user in ~60 s wall time (TCG).
+- `uname -m` = aarch64; `systemd-networkd`, `ssh`, `wup-thinserver`
+  all `active`; daemon runs as `wup`.
+- XFCE session up as `wup`: xfce4-session, xfwm4, xfce4-panel,
+  xfdesktop, Thunar, Onboard (pid visible), private PulseAudio,
+  private D-Bus; Xvfb display :99 at 1280x720 (xwininfo verified).
+- Desktop shortcut `wup-thinserver-settings.desktop` on `/home/wup/Desktop`;
+  `/usr/local/bin/wup-thin{server,-settings,-entrypoint}` present.
+- WUP protocol through slirp UDP forward (host :5080 → guest :50001):
+  `fake_pad.py --server 127.0.0.1 --port 5080 --seconds 25 --send-t
+  --send-n --keyframe` → `RESULT ok=1 hellos=85 videos=1689
+  uniq_frames=257 audios=588 t_acks=1 peer=127.0.0.1:5080` — replies
+  originate from the dialed host endpoint.
+- Persistence: file in /home/wup + settings.json change survived a
+  graceful poweroff + reboot; services auto-started.
+- Admin SSH: `ssh -i build/images/qemu-admin-key -p 2222 admin@127.0.0.1`.
+- Screenshot evidence: `docs/qemu-evidence/desktop-1280x720.png`
+  (xwd of :99 captured inside the guest).
+
+### Gotcha fixed during bring-up
+
+An earlier payload tarball archived `.` from a `mktemp -d` (mode 700,
+host uid) — extraction chmod'ed the guest `/` to `drwx------` owned by
+the `wup` user, which broke every non-root service (systemd-networkd
+exit 200/CHDIR → no DHCP → no network at all). The builder now tars
+explicit top-level dirs with `--owner=0 --group=0`. If a hand-built
+image shows `ls -ld /` != `drwxr-xr-x root root`, fix it offline before
+booting.
 
 ## Limitations
 
