@@ -20,11 +20,18 @@ uses UDP **50001** by default (configurable via `listen_port`).
 3. The daemon records the beacon's **source port** (not assumed to be
    50000) and keeps it updated — but only from *validated* session
    packets (`B`/`N`/`M`/`T`/`I` with correct lengths), so an unrelated
-   datagram sharing the client's IP cannot redirect the session. `B` is
-   accepted post-session as the defined NAT-rebinding path: the client
-   re-beacons from its current source endpoint and streaming resumes.
+   datagram sharing the client's IP cannot redirect the session. All
+   session replies (`H`/`V`/`A`/`R`/`T`/`Q`) originate from the **same
+   socket and port the client dialed** — the discovery socket is adopted
+   as the session socket — which survives address-and-port-dependent
+   NAT filtering (verified in `scripts/nat-lab.sh`). Once the first `I`
+   arrives the peer endpoint is **locked**: a validated packet from the
+   same IPv4 but a different source port (another client sharing the
+   NAT's external address, or a remapped endpoint) terminates the
+   session instead of migrating it; the client re-beacons into a fresh
+   session. One GamePad session is served at a time.
    Direct clients need no inbound port forwarding on cone-type NAT;
-   symmetric NAT and multi-client-per-public-IP remain untested.
+   symmetric NAT remains untested.
 3. Daemon sends `H` hellos every 250 ms: `'H' ver flags mic light mode`.
    `flags` bit0 = request microphone; `light` = backlight level 1..6
    (bit6 = off, bit7 = keep); `mode` (5th byte, WUP_THIN_PROTOCOL

@@ -173,12 +173,28 @@ performance measurement, native install, Raspberry Pi).
 - [x] **Implemented / automatically tested:** `'T'` request dedup by
       consecutive reqid (recorded ack replayed, reset per session) and
       peer-port updates restricted to validated session packets
-      (`B`/`N`/`M`/`T`/`I` type+length); `B` post-session is the defined
-      NAT-rebinding path.
-- [ ] **Pending:** isolated network-namespace NAT validation
-      (translated ports, endpoint filtering, multi-client, mapping
-      expiry); secure WAN transport feasibility; PC reference client;
-      physical GamePad retest of the profile manager.
+      (`B`/`N`/`M`/`T`/`I` type+length).
+- [x] **Stable session endpoint:** the discovery socket is adopted as the
+      session socket — `H`/`V`/`A`/`R`/`T`/`Q` all originate from the
+      port the client dialed (previously an ephemeral port, fragile
+      behind address-and-port-dependent filtering). In `pad_ip` mode the
+      session socket binds `listen_port`/`listen_address` with ephemeral
+      fallback.
+- [x] **Session endpoint isolation:** once the first `I` arrives the peer
+      endpoint is locked; a validated packet from the same IPv4 but a
+      different source port terminates the session (re-beacon → fresh
+      session) instead of migrating it — two clients sharing one NAT
+      external IP cannot hijack each other's stream.
+- [x] **Isolated NAT laboratory:** `scripts/nat-lab.sh` +
+      `tools/nat-lab/{lab-server.c,fake_pad.py}` run the real patched
+      libwupstream and a real-protocol client through nftables
+      namespaces. Passing: endpoint port stability (50001 and custom
+      5080), full session (V/A/N/T) through NAT, strict
+      address-and-port-dependent filtering, multi-client turn-taking.
+- [ ] **Pending:** NAT mapping-expiry timing tests, symmetric NAT,
+      secure WAN transport feasibility, native/QEMU ARM64 deployment,
+      PC reference client, physical GamePad retest of the profile
+      manager.
 
 ## Known issues / risks
 

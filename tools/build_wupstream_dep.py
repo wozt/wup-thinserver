@@ -222,6 +222,20 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
             raise RuntimeError(f"Unexpected pinned source: {code}")
         text = text.replace(sig_old, sig_new, 1)
 
+    # discovery socket: configurable port + optional bind address — applied
+    # BEFORE the session-socket patch below, whose text would otherwise
+    # satisfy the port_new check and skip this replacement.
+    port_old = "        me.sin_port = htons(50001);"
+    port_new = ("        me.sin_port = htons(port > 0 && port < 65536 ? port : 50001);\n"
+                "        if (bind_addr && bind_addr[0]) {\n"
+                "            unsigned long a = inet_addr(bind_addr);\n"
+                "            me.sin_addr.s_addr = a == INADDR_NONE ? htonl(INADDR_ANY) : a;\n"
+                "        }")
+    if port_new not in text:
+        if text.count(port_old) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(port_old, port_new, 1)
+
     # session socket endpoint: in pad_ip mode bind it to the configured
     # port/address so replies share the endpoint clients dialed (ephemeral
     # fallback when the port is busy); in discovery mode it stays unbound
@@ -248,18 +262,6 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
         if text.count(sock_old) != 1:
             raise RuntimeError(f"Unexpected pinned source: {code}")
         text = text.replace(sock_old, sock_new, 1)
-
-    # discovery socket: configurable port + optional bind address
-    port_old = "        me.sin_port = htons(50001);"
-    port_new = ("        me.sin_port = htons(port > 0 && port < 65536 ? port : 50001);\n"
-                "        if (bind_addr && bind_addr[0]) {\n"
-                "            unsigned long a = inet_addr(bind_addr);\n"
-                "            me.sin_addr.s_addr = a == INADDR_NONE ? htonl(INADDR_ANY) : a;\n"
-                "        }")
-    if port_new not in text:
-        if text.count(port_old) != 1:
-            raise RuntimeError(f"Unexpected pinned source: {code}")
-        text = text.replace(port_old, port_new, 1)
 
     # record the beacon's real source port: direct clients may not use 50000
     beacon_old = ("if (recvfrom(find, (char *)b, sizeof b, 0, (struct sockaddr *)&from, &fl)"
@@ -289,8 +291,12 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
 
     # keep the peer port fresh only from validated session packets: an
     # arbitrary datagram from the same IP must not redirect the session.
-    # 'B' is accepted too — it is the defined NAT-rebinding path (the pad
-    # re-beacons from its current source endpoint and the session resumes).
+    # Once the session is established (first 'I'), the endpoint is locked:
+    # a validated packet from the same IPv4 but a different source port is
+    # another client sharing the NAT's external address (or a remapped
+    # endpoint) — the session ends instead of migrating, and the client
+    # re-beacons into a fresh session. Before 'I' the port may still move
+    # (beacon and first report can race a NAT rebinding).
     pump_old = "        if (from.sin_addr.s_addr != w->pad.sin_addr.s_addr) continue;"
     pump_new = pump_old + """
         int peer_packet = (b[0] == 'B' && n >= 4) ||
@@ -299,11 +305,26 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
                           (b[0] == 'T' && n >= 4) ||
                           (b[0] == 'I' && n == 136);
         if (!peer_packet) continue;
+        if (w->have && from.sin_port != w->pad.sin_port) {
+            w->gone = 1;                                   /* endpoint conflict: terminate, never migrate */
+            if (w->started) pthread_cond_broadcast(&w->cv);
+            continue;
+        }
         w->pad.sin_port = from.sin_port;"""
-    # migrate the earlier unconditional variant if the cache already has it
+    # migrate the earlier variants if the cache already has them
+    pump_prev = pump_old + """
+        int peer_packet = (b[0] == 'B' && n >= 4) ||
+                          (b[0] == 'N' && n >= 2 && n >= 4 + 8 * b[1]) ||
+                          (b[0] == 'M' && n > 8) ||
+                          (b[0] == 'T' && n >= 4) ||
+                          (b[0] == 'I' && n == 136);
+        if (!peer_packet) continue;
+        w->pad.sin_port = from.sin_port;"""
     stale = (pump_old + "\n        w->pad.sin_port = from.sin_port;")
     if pump_new not in text:
-        if stale in text:
+        if pump_prev in text:
+            text = text.replace(pump_prev, pump_new, 1)
+        elif stale in text:
             text = text.replace(stale, pump_new, 1)
         elif text.count(pump_old) == 1:
             text = text.replace(pump_old, pump_new, 1)

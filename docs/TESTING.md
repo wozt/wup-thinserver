@@ -69,6 +69,27 @@ docker compose exec --user wup sh -lc \
 - Reconnect/session-persistence test with a scripted fake client
   (a Python UDP peer speaking `H`/`I`/`N` is planned).
 
+## Isolated NAT laboratory
+
+`scripts/nat-lab.sh` (root required) builds `tools/nat-lab/lab-server`
+against the pinned patched libwupstream and runs it inside a private
+network namespace behind an nftables masquerade. `tools/nat-lab/
+fake_pad.py` is a real-protocol UDP client (B/H/I/V/A/N/T) inside a
+second namespace. The host network and firewall are never touched;
+everything is torn down on exit (`--keep` retains the namespaces).
+
+```sh
+sudo scripts/nat-lab.sh                  # all tests
+sudo scripts/nat-lab.sh --only session   # one test
+sudo scripts/nat-lab.sh --only strict-filter
+```
+
+Tests: `endpoint` (H must come from the dialed port), `custom-port`
+(same on UDP 5080), `session` (full B/H/I/V/A + T ack + N through NAT),
+`strict-filter` (address-and-port-dependent filtering emulation —
+replies must originate from the exact ip:port dialed), `multi`
+(two clients sharing one NAT external IPv4, turn-taking sessions).
+
 ## Manual / hardware validation checklist
 
 Requires a Wii U GamePad (firmware 7677) with WUP ThinClient installed,
