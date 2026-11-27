@@ -505,8 +505,8 @@ static void kb_pointer(input_ctx_t *ctx, const settings_t *s, const wupstream_in
         if (abs(ly) < dz) ly = 0;
         if (ic->invert_y) ly = -ly;
         if (ic->left_stick_mouse) {
-            ctx->mx += lx * 0.02 * sens;
-            ctx->my += ly * 0.02 * sens;
+            ctx->mx += lx * 0.03 * sens;
+            ctx->my += ly * 0.03 * sens;
         }
         int rx = in->rx, ry = -in->ry;
         if (abs(rx) < dz) rx = 0;
@@ -521,8 +521,8 @@ static void kb_pointer(input_ctx_t *ctx, const settings_t *s, const wupstream_in
             while (ctx->sx > 28) { xtest_scroll(d, 7); ctx->sx -= 28; }
             while (ctx->sx < -28) { xtest_scroll(d, 6); ctx->sx += 28; }
         } else if (ic->right_stick_mouse) {
-            ctx->mx += rx * 0.02 * sens;
-            ctx->my += ry * 0.02 * sens;
+            ctx->mx += rx * 0.03 * sens;
+            ctx->my += ry * 0.03 * sens;
         }
     }
     /* gyro -> mouse (both modes): px/frame = dps * px_per_s / 60 */
