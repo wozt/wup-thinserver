@@ -1,0 +1,12 @@
+# METABEGIN
+# X-Env-Layer-Name: wup-thinserver
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Category: application
+# X-Env-Layer-Desc: Native WUP ThinServer virtual desktop appliance
+# X-Env-Layer-Requires: systemd-min
+# METAEND
+---
+mmdebstrap:
+  customize-hooks:
+    - chroot $1 /bin/bash /opt/wup/provision-rpi-image.sh
+

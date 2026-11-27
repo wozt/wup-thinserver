@@ -98,6 +98,7 @@ foreach h : [
     ['scripts/migrate-settings.py', 'wup-migrate-settings'],
     ['scripts/wup-set-password.sh', 'wup-set-password'],
     ['scripts/gamepad-devd.sh', 'wup-gamepad-devd'],
+    ['scripts/prepare-native-camera.sh', 'wup-prepare-native-camera'],
   ]
   install_data(h[0],
     install_dir: get_option('bindir'),

@@ -40,9 +40,16 @@ Status terms: **planned**, **in progress**, **implemented**,
    launches headless profiles func/pi4/zero2w with UDP hostfwd 5080→50001
    and SSH admin forward 2222→22. Emulation validates function only,
    never physical Raspberry Pi performance.
-8. **Raspberry Pi 4 — planned.** Reproducible headless ARM64 image and physical
-   validation; patched software x264 remains the known-compatible start.
-9. **Raspberry Pi Zero 2 W — planned / experimental.** 512 MiB profile and
-   physical measurement before any FPS or browser-performance claim.
+8. **Raspberry Pi 4 — image pipeline implemented / build-tested.** Pinned
+   `rpi-image-gen` v2.8.0, official Pi 4/Trixie ARM64 layer, shared native
+   payload and provisioning, locked accounts, systemd/Xvfb desktop, dedicated
+   port 50004, `.img.xz` + checksum production. The image boots to the native
+   service under QEMU `raspi4b`; physical validation remains pending and
+   patched software x264 is the known-compatible start.
+9. **Raspberry Pi Zero 2 W — reduced experimental pipeline implemented,
+   build-tested.** Official Zero 2 W layer, 854×480 desktop, separate
+   reduced package set, compositor/background-service reductions and port
+   50005. The image and checksum build successfully; 512 MiB hardware
+   measurements remain pending.
 10. **Performance and hardware encoding — planned.** Measure first; enable no
     hardware encoder until proven compatible with the physical GamePad.

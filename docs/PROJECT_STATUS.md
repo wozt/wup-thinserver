@@ -259,3 +259,31 @@ performance measurement, native install, Raspberry Pi).
 - Host-networking requirement for pad discovery (documented).
 - 60 fps not measured; software x264 at 720p may not sustain it.
 - `commands[]`/`mouse_buttons[]`/`cmd_presets` are local additions (not upstream).
+
+## Raspberry Pi image pipeline
+
+- [x] **Generator decision:** pinned official `rpi-image-gen` v2.8.0 selected
+      over pi-gen for its Debian 13 ARM64 suite, first-class `rpi4` and
+      `rpizero2w` layers, external layers and deterministic metadata model.
+- [x] **Implemented:** one build entry point cross-builds the existing native
+      ARM64 payload, imports the authoritative runtime/desktop package lists,
+      installs the shared systemd/session architecture, and produces a
+      flashable `.img.xz` plus SHA-256 checksum.
+- [x] **Secure/headless defaults:** locked `admin`/`wup` passwords, generated
+      SSH key, no root/password SSH, no display manager or physical desktop,
+      automatic native `wup-thinserver.service`, ports 50004/50005.
+- [x] **Zero 2 W reduction:** separate package list, 854×480, compositor off,
+      and optional maintenance/discovery/printing services masked instead of
+      merely imposing a 512 MiB limit on the Pi 4 image.
+- [x] **Native virtual-device preparation:** uinput boot/udev policy and an
+      explicit v4l2loopback helper that uses Raspberry Pi kernel headers,
+      never overwrites an unrelated `/dev/video42`, and chooses a safe
+      alternative.
+- [x] **Build validation:** Pi 4 and Zero 2 W `.img.xz` artifacts completed;
+      compression/checksums and offline filesystems were verified. Pi 4 boots
+      its Raspberry Pi kernel and root filesystem under QEMU `raspi4b`, starts
+      `wup-thinserver.service`, and reaches `multi-user.target` in the isolated
+      smoke test.
+- [ ] **Pending:** flash and measure physical Pi 4 and Zero 2 W boards. QEMU
+      cannot validate VideoCore, codec, Wi-Fi, memory pressure, FPS or camera;
+      no physical compatibility or performance claim is made yet.

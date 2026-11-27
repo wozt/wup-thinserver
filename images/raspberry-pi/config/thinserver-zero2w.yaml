@@ -1,0 +1,23 @@
+include:
+  file: trixie-minbase.yaml
+
+device:
+  layer: rpizero2w
+  hostname: wup-thinserver-zero2w
+  user1: admin
+  user1sudo: none
+
+image:
+  layer: image-rpios
+  boot_part_size: 256M
+  root_part_size: 6G
+  name: wup-thinserver-zero2w-arm64
+
+layer:
+  admin: device-user-admin
+  thinserver: wup-thinserver
+
+ssh:
+  pubkey_user1: $(cat ${@SRCROOT}/admin-key.pub)
+  pubkey_only: y
+

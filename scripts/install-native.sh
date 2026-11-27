@@ -23,6 +23,8 @@
 #                       default; without it the account stays locked)
 #   --prebuilt DIR      install from a staged usr/local tree instead of
 #                       compiling (used by image builders)
+#   --skip-packages     packages are already installed by the image builder;
+#                       valid only together with --prebuilt
 #   --no-start          install everything but do not enable/start the unit
 #   --uninstall         remove the installation (keeps /home/wup by default)
 #   --remove-user       with --uninstall: also delete the wup account
@@ -40,7 +42,7 @@ WUP_CONFIG_DIR="$WUP_HOME/.config/wup-thinserver"
 WUP_CONFIG="$WUP_CONFIG_DIR/settings.json"
 
 DESKTOP="1280x720"; KEYBOARD="us"; PORT=""; HOSTNAME=""; PASSWORD=0
-PREBUILT=""; NO_START=0; UNINSTALL=0; REMOVE_USER=0
+PREBUILT=""; SKIP_PACKAGES=0; NO_START=0; UNINSTALL=0; REMOVE_USER=0
 while [ $# -gt 0 ]; do case "$1" in
     --desktop) DESKTOP="$2"; shift 2;;
     --keyboard) KEYBOARD="$2"; shift 2;;
@@ -48,6 +50,7 @@ while [ $# -gt 0 ]; do case "$1" in
     --hostname) HOSTNAME="$2"; shift 2;;
     --password) PASSWORD=1; shift;;
     --prebuilt) PREBUILT="$2"; shift 2;;
+    --skip-packages) SKIP_PACKAGES=1; shift;;
     --no-start) NO_START=1; shift;;
     --uninstall) UNINSTALL=1; shift;;
     --remove-user) REMOVE_USER=1; shift;;
@@ -59,6 +62,8 @@ log() { printf '\033[1;36m[install-native]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[install-native] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "must run as root"
+[ "$SKIP_PACKAGES" = 0 ] || [ -n "$PREBUILT" ] ||
+    die "--skip-packages requires --prebuilt"
 [ -r /etc/os-release ] || die "not a systemd/Debian system"
 . /etc/os-release
 [ "${ID:-}" = "debian" ] || log "warning: not Debian ($ID) — package lists may differ"
@@ -95,12 +100,16 @@ if [ "$UNINSTALL" = 1 ]; then
 fi
 
 # ---------- packages ------------------------------------------------------------
-log "installing packages (arch: $ARCH)"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq $(pkgs "$PKGDIR/runtime.txt") $(pkgs "$PKGDIR/desktop.txt")
-if [ -z "$PREBUILT" ]; then
-    apt-get install -y -qq $(pkgs "$PKGDIR/build.txt")
+if [ "$SKIP_PACKAGES" = 1 ]; then
+    log "using packages resolved by the image builder (arch: $ARCH)"
+else
+    log "installing packages (arch: $ARCH)"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq
+    apt-get install -y -qq $(pkgs "$PKGDIR/runtime.txt") $(pkgs "$PKGDIR/desktop.txt")
+    if [ -z "$PREBUILT" ]; then
+        apt-get install -y -qq $(pkgs "$PKGDIR/build.txt")
+    fi
 fi
 command -v meson >/dev/null || [ -n "$PREBUILT" ] || die "meson missing after package install"
 
@@ -173,11 +182,14 @@ mkdir -p "$DROPIN_DIR"
     echo "Environment=WUP_THIN_CONFIG=${WUP_CONFIG}"
 } > "$DROPIN"
 chmod 644 "$DROPIN"
-systemctl daemon-reload
 if [ "$NO_START" = 0 ]; then
+    systemctl daemon-reload
     systemctl enable --now wup-thinserver.service
     log "wup-thinserver.service enabled and started"
 else
+    # Image-builder chroots have no running systemd manager. `enable` only
+    # creates the wanted symlink and is therefore safe offline; daemon-reload
+    # and start belong to the first real boot.
     systemctl enable wup-thinserver.service
     log "wup-thinserver.service enabled (not started: --no-start)"
 fi

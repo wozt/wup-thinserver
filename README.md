@@ -91,6 +91,22 @@ lab/validation use (see [docs/QEMU.md](docs/QEMU.md)):
 ./scripts/run-qemu.sh           # headless; UDP host:5080 -> guest:50001
 ```
 
+### Raspberry Pi images
+
+The headless Pi 4 ARM64 image and experimental reduced Pi Zero 2 W image use
+the same native provisioning and service as the Debian/QEMU targets. They are
+built with pinned Raspberry Pi `rpi-image-gen` device layers:
+
+```sh
+./scripts/build-rpi-image.sh pi4
+./scripts/build-rpi-image.sh zero2w
+```
+
+See [docs/RASPBERRY_PI.md](docs/RASPBERRY_PI.md) for host dependencies,
+secure SSH provisioning, ports 50004/50005 and the isolated QEMU `raspi4b`
+smoke test. Successful image construction does not claim physical board or
+performance validation.
+
 ### Native build (Debian 13 / compatible)
 
 Prerequisites: `meson ninja-build pkg-config gcc` plus the X11/XCB,
@@ -100,7 +116,7 @@ PulseAudio, cairo/pango, json-glib and swscale development packages
 ```sh
 meson setup build                    # GTK settings app: auto-detected
 meson compile -C build -j8
-meson test -C build --print-errorlogs     # 6 tests incl. IPC, capture and evdev/SDL
+meson test -C build --print-errorlogs     # 8 tests incl. IPC, camera, capture and evdev/SDL
 ./build/wup-thinserver --check            # validate config
 ./build/wup-thinserver                    # needs DISPLAY of a session
 ./build/wup-thinserver-settings           # needs GTK3 and the running daemon
@@ -139,7 +155,8 @@ Controller defaults (all configurable — see
 | TV | fullscreen |
 
 See [docs/INSTALLATION.md](docs/INSTALLATION.md),
-[docs/BUILD.md](docs/BUILD.md), [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+[docs/BUILD.md](docs/BUILD.md), [docs/CONFIGURATION.md](docs/CONFIGURATION.md),
+and [docs/RASPBERRY_PI.md](docs/RASPBERRY_PI.md).
 
 ## Status
 
