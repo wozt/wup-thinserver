@@ -41,23 +41,38 @@ for command in dpkg-architecture git ssh-keygen xz sha256sum; do
     command -v "$command" >/dev/null || die "missing build tool: $command"
 done
 
-log "building the shared ARM64 application payload"
-"$ROOT/scripts/build-arm64.sh" "$ROOT/build-arm64"
-
 mkdir -p "$PROJECT/config" "$PROJECT/layer" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/networks" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/scripts" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/packaging/systemd" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/prebuilt"
+
+# aarch64 host (e.g. an arm64 CI runner): build the payload natively;
+# x86_64 host: cross-compile with the aarch64 toolchain.
+if [ "$(uname -m)" = aarch64 ]; then
+    log "building the shared ARM64 payload natively"
+    PAYLOAD_BUILD="$ROOT/build-native-arm64"
+    if [ ! -d "$PAYLOAD_BUILD" ]; then
+        meson setup "$PAYLOAD_BUILD" --buildtype=release -Dsettings_app=enabled
+    fi
+    meson compile -C "$PAYLOAD_BUILD" -j"$(nproc)"
+    rm -rf "$PAYLOAD_BUILD/install-root"
+    meson install -C "$PAYLOAD_BUILD" --destdir "$PAYLOAD_BUILD/install-root"
+    PAYLOAD_ROOT="$PAYLOAD_BUILD/install-root"
+else
+    log "building the shared ARM64 application payload"
+    "$ROOT/scripts/build-arm64.sh" "$ROOT/build-arm64"
+    PAYLOAD_ROOT="$ROOT/build-arm64/install-root"
+fi
+cp -a "$PAYLOAD_ROOT/usr" \
+    "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/prebuilt/"
 cp "$ROOT/images/raspberry-pi/config/$CONFIG" "$PROJECT/config/$CONFIG"
 cp "$ROOT/images/raspberry-pi/layer/wup-thinserver.yaml" "$PROJECT/layer/"
 cp "$ROOT/images/raspberry-pi/provision-rpi-image.sh" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/"
 chmod 0755 "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/provision-rpi-image.sh"
 printf '%s\n' "$PROFILE" > "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/profile"
-cp -a "$ROOT/build-arm64/install-root/usr" \
-    "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/prebuilt/"
 cp "$ROOT/scripts/install-native.sh" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/scripts/"
 chmod 0755 "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/scripts/install-native.sh"

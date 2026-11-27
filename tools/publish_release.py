@@ -143,8 +143,22 @@ def prune_releases(repo: str) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] == "--next-tag":
+        # Print the tag the next release would allocate, without creating it.
+        # Used by the workflow to pin docker images and render the compose
+        # file before publish_release.py reserves the ref.
+        repo = os.environ.get("GITHUB_REPOSITORY", "")
+        sha = os.environ.get("GITHUB_SHA", "")
+        if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
+            raise RuntimeError("GITHUB_REPOSITORY is absent or invalid")
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise RuntimeError("GITHUB_SHA is absent or invalid")
+        root = Path(__file__).resolve().parent.parent
+        tag, _ = choose_tag(remote_tags(repo), base_version(root), sha)
+        print(tag)
+        return
     if len(sys.argv) < 2:
-        raise SystemExit("usage: publish_release.py <assets-dir> [more-assets...]")
+        raise SystemExit("usage: publish_release.py [--next-tag] <assets-dir> [more-assets...]")
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     sha = os.environ.get("GITHUB_SHA", "")
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
@@ -167,7 +181,17 @@ def main() -> None:
     if not assets:
         raise RuntimeError("no release assets found")
 
-    tag = reserve_tag(repo, base, sha)
+    forced = os.environ.get("RELEASE_TAG", "")
+    if forced:
+        if tag_series(forced) is None:
+            raise RuntimeError(f"RELEASE_TAG is not vX.Y.Z.N: {forced}")
+        tag = forced
+        if tag not in remote_tags(repo):
+            sh("gh", "api", "-X", "POST", f"repos/{repo}/git/refs",
+               "-f", f"ref=refs/tags/{tag}", "-f", f"sha={sha}")
+        print(f"Using forced tag {tag}.", flush=True)
+    else:
+        tag = reserve_tag(repo, base, sha)
     names = release_names(repo)
 
     if tag in names:

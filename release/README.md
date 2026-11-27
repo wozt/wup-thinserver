@@ -76,6 +76,20 @@ Pi OS (`userconf.txt`, netplan `network-config`, `wpa_supplicant.conf`)
 and does **not** apply to these Debian images — `wup-firstboot.conf` is
 the supported equivalent. Ethernet DHCP works out of the box on `eth0`.
 
+### Raspberry Pi OS images (`pios-*`)
+
+The `wup-thinserver-pios-*` images are built on **Raspberry Pi OS
+(Trixie)** with cloud-init, so **Raspberry Pi Imager OS customization
+works natively**: when flashing, choose "Edit settings" and set the
+hostname, user (`wup` / `wup` is already the appliance default — the
+custom user replaces it), Wi-Fi network and enable SSH. Alternatively,
+copy `user-data`/`network-config` onto the BOOT partition afterwards —
+cloud-init applies them on first boot.
+
+Because cloud-init manages the first user, the `pios` images do **not**
+ship `wup-firstboot.conf`; use Imager customization or cloud-init files
+for Wi-Fi, passwords and hostname. Ethernet DHCP works out of the box.
+
 ## Native Linux install (zip)
 
 ```sh
@@ -114,14 +128,23 @@ Xvfb/XFCE session still requires a system install (deb/zip/native).
 
 ```sh
 docker login ghcr.io            # if the package is private
-docker compose up -d            # uses ghcr.io/wozt/wup-thinserver:<tag>
+docker compose up -d            # pulls ghcr.io/wozt/wup-thinserver:<tag>
 ```
 
-`docker-compose.yml` runs the appliance in host network mode (required by
-the GamePad discovery protocol). Optional overlays:
-`docker-compose.gamepad.yml` (virtual gamepad via `/dev/uinput`) and
-`docker-compose.camera.yml` (v4l2loopback camera). See `docs/` in the
-repository for the full configuration reference.
+The shipped `docker-compose.yml` is the merged base + GamePad overlay:
+it runs the appliance in host network mode (required by the GamePad
+discovery protocol) and passes `/dev/uinput` so the daemon can create
+the virtual "WUP ThinServer Gamepad" controller. If the host has no
+`/dev/uinput`, delete the `devices:` and `device_cgroup_rules:` blocks —
+desktop mode works without them.
+
+Optional camera overlay (v4l2loopback "Wii U GamePad Camera"):
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.camera.yml up -d
+```
+
+See `docs/` in the repository for the full configuration reference.
 
 ## Verifying downloads
 

@@ -28,7 +28,13 @@ die() { printf '\033[1;31m[package-deb] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 case "$ARCH" in
     amd64) STAGE="$ROOT/build-native-amd64/install-root" ;;
-    arm64) STAGE="$ROOT/build-arm64/install-root" ;;
+    arm64)
+        if [ "$(uname -m)" = aarch64 ]; then
+            STAGE="$ROOT/build-native-arm64/install-root"
+        else
+            STAGE="$ROOT/build-arm64/install-root"
+        fi
+        ;;
 esac
 [ -x "$STAGE/usr/local/bin/wup-thinserver" ] ||
     die "missing staged tree at $STAGE — run package-native.sh or build-arm64.sh first"

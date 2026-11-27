@@ -1,0 +1,58 @@
+# WUP ThinServer — release Docker Compose (merged base + GamePad mode).
+#
+# The image is pulled from GHCR; __WUP_IMAGE__ is substituted with the
+# release tag by the publish workflow (e.g. ghcr.io/wozt/wup-thinserver:v1.0.0.3).
+#
+# Networking: host mode — required by the WUP Stream UDP discovery protocol
+# (broadcast :50001, replies to GamePad :50000). No TCP ports are opened.
+#
+# GamePad mode is merged in: the container gets /dev/uinput so the daemon
+# can create the virtual "WUP ThinServer Gamepad" controller. If the host
+# has no /dev/uinput (or the uinput module is not loaded), DELETE the
+# `devices:` and `device_cgroup_rules:` blocks below — Desktop mode works
+# without them.
+#
+# Optional camera overlay: add -f docker-compose.camera.yml for the
+# v4l2loopback "Wii U GamePad Camera" device (see that file's comments).
+#
+# Environment overrides: DESKTOP_WIDTH/HEIGHT, KEYBOARD_LAYOUT/VARIANT,
+# DISPLAY_NUM, WUP_PASSWORD*, WUP_SUDO, WUP_GAMEPAD=0 to disable gamepad
+# probing even with /dev/uinput present.
+
+services:
+  wup-thinserver:
+    image: __WUP_IMAGE__
+    container_name: wup-thinserver
+    hostname: ${THIN_HOSTNAME:-wup-thinserver}
+    init: true
+    network_mode: host
+    environment:
+      DESKTOP_WIDTH: ${DESKTOP_WIDTH:-1280}
+      DESKTOP_HEIGHT: ${DESKTOP_HEIGHT:-720}
+      DISPLAY_NUM: ${DISPLAY_NUM:-99}
+      KEYBOARD_LAYOUT: ${KEYBOARD_LAYOUT:-us}
+      KEYBOARD_VARIANT: ${KEYBOARD_VARIANT:-}
+      LOCALE: ${LOCALE:-C.UTF-8}
+      WUP_THIN_CONFIG: /home/wup/.config/wup-thinserver/settings.json
+      WUP_PASSWORD: ${WUP_PASSWORD:-}
+      WUP_PASSWORD_HASH: ${WUP_PASSWORD_HASH:-}
+      WUP_ROOT_PASSWORD: ${WUP_ROOT_PASSWORD:-}
+      WUP_SUDO: ${WUP_SUDO:-1}
+      WUP_SUDO_NOPASSWD: ${WUP_SUDO_NOPASSWD:-0}
+      ONBOARD_DOCK_HEIGHT: ${ONBOARD_DOCK_HEIGHT:-190}
+      ONBOARD_LAYOUT: ${ONBOARD_LAYOUT:-}
+      # entrypoint mknods this alias so host /dev/uinput perms stay intact
+      WUP_UINPUT_PATH: /dev/uinput-wup
+      WUP_GAMEPAD: ${WUP_GAMEPAD:-1}
+    devices:
+      - /dev/uinput
+    device_cgroup_rules:
+      # evdev nodes are created dynamically (major 13 = input); only nodes
+      # under the container's private /dev can be opened.
+      - "c 13:* rmw"
+    volumes:
+      - wup-home:/home/wup
+    restart: unless-stopped
+
+volumes:
+  wup-home:

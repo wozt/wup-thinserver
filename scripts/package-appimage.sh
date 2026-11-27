@@ -30,7 +30,14 @@ OUTDIR="${2:-$ROOT/build/dist}"
 MACHINE="$(uname -m)"
 case "$MACHINE" in
     x86_64)  ARCH=amd64; STAGE="$ROOT/build-native-amd64/install-root" ;;
-    aarch64) ARCH=arm64; STAGE="$ROOT/build-arm64/install-root" ;;
+    aarch64)
+        ARCH=arm64
+        if [ -d "$ROOT/build-native-arm64/install-root/usr/local/bin" ]; then
+            STAGE="$ROOT/build-native-arm64/install-root"
+        else
+            STAGE="$ROOT/build-arm64/install-root"
+        fi
+        ;;
     *) echo "unsupported host arch for AppImage: $MACHINE" >&2; exit 2 ;;
 esac
 log() { printf '\033[1;36m[package-appimage]\033[0m %s\n' "$*"; }

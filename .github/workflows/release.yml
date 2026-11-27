@@ -1,0 +1,263 @@
+name: release
+
+# Builds every release artifact on push to main and publishes the next
+# incremental vX.Y.Z.N GitHub release (see tools/publish_release.py for
+# versioning and retention). Personal Wi-Fi credentials are NEVER used here:
+# Pi images ship without baked Wi-Fi and rely on wup-firstboot.conf /
+# Raspberry Pi Imager cloud-init customization (see release/README.md).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: wozt/wup-thinserver
+
+jobs:
+  # ------------------------------------------------------------------
+  # Native Linux artifacts: zip bundle, .deb, AppImage — one job per arch,
+  # each inside a native Debian 13 (trixie) container for env parity.
+  # ------------------------------------------------------------------
+  native:
+    name: native-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            deb_arch: amd64
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            deb_arch: arm64
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="$(python3 tools/publish_release.py --next-tag)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building artifacts for $TAG"
+
+      - name: Build packages (zip, deb, AppImage)
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          DEB_ARCH: ${{ matrix.deb_arch }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          docker run --rm \
+            --platform "$PLATFORM" \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e TAG -e DEB_ARCH \
+            -e LINUXDEPLOY=/src/build/linuxdeploy.AppImage \
+            debian:trixie bash -euo pipefail -c '
+              apt-get update -qq
+              apt-get install -y -qq $(grep -v "^#" provisioning/packages/build.txt | grep -v "^$") \
+                zip dpkg-dev file libgdk-pixbuf2.0-bin librsvg2-common
+              export PATH="/usr/sbin:/sbin:$PATH"
+              mkdir -p build/dist
+              scripts/package-native.sh "$DEB_ARCH" "$TAG" build/dist
+              scripts/package-deb.sh    "$DEB_ARCH" "$TAG" build/dist
+              case "$(uname -m)" in aarch64) LDARCH=aarch64 ;; *) LDARCH=x86_64 ;; esac
+              curl -fL -o build/linuxdeploy.AppImage \
+                "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$LDARCH.AppImage"
+              chmod +x build/linuxdeploy.AppImage
+              APPIMAGE_EXTRACT_AND_RUN=1 scripts/package-appimage.sh "$TAG" build/dist
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.arch }}
+          path: build/dist/*
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # Docker image, multi-arch (amd64 + arm64) via buildx.
+  # ------------------------------------------------------------------
+  docker:
+    name: docker-image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ------------------------------------------------------------------
+  # Debian 13 Pi images (rpi-image-gen), built natively on arm64 runners
+  # inside a privileged Debian container (mount namespaces required).
+  # ------------------------------------------------------------------
+  pi-debian:
+    name: pi-debian-$PROFILE
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [pi4, zero2w]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.profile }} image
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          docker run --rm --privileged \
+            --platform linux/arm64 \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            -e DEBIAN_FRONTEND=noninteractive -e PROFILE \
+            debian:trixie bash -euo pipefail -c '
+              apt-get update -qq
+              apt-get install -y -qq $(grep -v "^#" provisioning/packages/build.txt | grep -v "^$") \
+                git curl ca-certificates \
+                qemu-user qemu-user-static binfmt-support
+              git clone --depth 1 --branch v2.8.0 \
+                https://github.com/raspberrypi/rpi-image-gen.git \
+                build/rpi-image-gen/source
+              bash build/rpi-image-gen/source/install_deps.sh
+              export PATH="/usr/sbin:/sbin:$PATH"
+              scripts/build-rpi-image.sh "$PROFILE"
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-debian-${{ matrix.profile }}
+          path: |
+            build/images/wup-thinserver-${{ matrix.profile }}-arm64.img.xz
+            build/images/wup-thinserver-${{ matrix.profile }}-arm64.img.xz.sha256
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # Raspberry Pi OS (Trixie) images (pi-gen), same privileged container.
+  # ------------------------------------------------------------------
+  pi-pios:
+    name: pi-pios-$PROFILE
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [pi4, zero2w]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space for pi-gen work dirs
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android \
+            /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - name: Build ${{ matrix.profile }} Raspberry Pi OS image
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          docker run --rm --privileged \
+            --platform linux/arm64 \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            -e DEBIAN_FRONTEND=noninteractive -e PROFILE \
+            debian:trixie bash -euo pipefail -c '
+              apt-get update -qq
+              apt-get install -y -qq $(grep -v "^#" provisioning/packages/build.txt | grep -v "^$") \
+                quilt parted debootstrap zerofree zip dosfstools e2fsprogs \
+                libcap2-bin rsync xz-utils curl xxd file kmod bc gpg pigz \
+                arch-test qemu-user qemu-user-static git ca-certificates
+              export PATH="/usr/sbin:/sbin:$PATH"
+              scripts/build-pios-image.sh "$PROFILE"
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-pios-${{ matrix.profile }}
+          path: |
+            build/images/wup-thinserver-pios-${{ matrix.profile }}-arm64.img.xz
+            build/images/wup-thinserver-pios-${{ matrix.profile }}-arm64.img.xz.sha256
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # Release: alias the docker tag, render the compose file, publish.
+  # ------------------------------------------------------------------
+  release:
+    name: publish-release
+    needs: [native, docker, pi-debian, pi-pios]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          path: dist
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tag, alias docker image, render compose
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="$(python3 tools/publish_release.py --next-tag)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          docker buildx imagetools create \
+            -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG" \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+
+          sed "s|__WUP_IMAGE__|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG|" \
+            release/docker-compose.yml > dist/docker-compose.yml
+          cp release/docker-compose.camera.yml dist/
+          cp release/README.md dist/README.md
+
+          # One combined checksum file for every artifact in the release.
+          (cd dist && sha256sum -- * | grep -v 'SHA256SUMS$' > SHA256SUMS)
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: python3 tools/publish_release.py dist

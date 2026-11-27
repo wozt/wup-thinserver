@@ -33,7 +33,19 @@ mkdir -p "$PKG/source/scripts" "$PKG/source/provisioning/packages" \
          "$PKG/source/packaging/systemd" "$PKG/prebuilt"
 
 # --- staged /usr/local tree -------------------------------------------------
-if [ "$ARCH" = arm64 ]; then
+# arm64 on an aarch64 host builds natively; arm64 on x86_64 cross-compiles.
+HOST_MACH="$(uname -m)"
+if [ "$ARCH" = arm64 ] && [ "$HOST_MACH" = aarch64 ]; then
+    log "building arm64 payload natively"
+    B="$ROOT/build-native-arm64"
+    if [ ! -d "$B" ]; then
+        meson setup "$B" --buildtype=release -Dsettings_app=enabled
+    fi
+    meson compile -C "$B" -j"$(nproc)"
+    rm -rf "$B/install-root"
+    meson install -C "$B" --destdir "$B/install-root"
+    cp -a "$B/install-root/." "$PKG/prebuilt/"
+elif [ "$ARCH" = arm64 ]; then
     log "cross-building arm64 payload"
     "$ROOT/scripts/build-arm64.sh" "$ROOT/build-arm64" >/dev/null
     cp -a "$ROOT/build-arm64/install-root/." "$PKG/prebuilt/"
