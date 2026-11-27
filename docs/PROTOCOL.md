@@ -18,9 +18,13 @@ uses UDP **50001** by default (configurable via `listen_port`).
    `B` packet — broadcast or unicast — or connects directly to
    `pad_ip:50000` when configured.
 3. The daemon records the beacon's **source port** (not assumed to be
-   50000) and keeps it updated from session packets, so `H`/media replies
-   reach clients behind NAT or using ephemeral source ports. Direct
-   clients need no inbound port forwarding on cone-type NAT.
+   50000) and keeps it updated — but only from *validated* session
+   packets (`B`/`N`/`M`/`T`/`I` with correct lengths), so an unrelated
+   datagram sharing the client's IP cannot redirect the session. `B` is
+   accepted post-session as the defined NAT-rebinding path: the client
+   re-beacons from its current source endpoint and streaming resumes.
+   Direct clients need no inbound port forwarding on cone-type NAT;
+   symmetric NAT and multi-client-per-public-IP remain untested.
 3. Daemon sends `H` hellos every 250 ms: `'H' ver flags mic light mode`.
    `flags` bit0 = request microphone; `light` = backlight level 1..6
    (bit6 = off, bit7 = keep); `mode` (5th byte, WUP_THIN_PROTOCOL
@@ -52,7 +56,7 @@ the client; the client NACKs missing fragments.
 | `I` | `'I' flags u16 ticks u8 backlight 0 0 0, 128-byte report` | input report @ ~200 Hz. `flags` bit0 = request keyframe; bits1-3 = decoder queue depth. `ticks` ≈ µs since last screen refresh. Report: buttons/sticks/touch/IMU/volume/battery (see upstream `pad/stream`). |
 | `N` | `'N' count 0 0, count × {u32 frame, u16 packet (0xffff=all), u16 0}` | request retransmission of lost video fragments |
 | `M` | `'M' 0 0 0, u32 sample, PCM mono 48 kHz` | client microphone (when enabled by `H` flags bit0) |
-| `T` | `'T' reqid mode 0` (4 B) | **WUP_THIN_PROTOCOL extension** — request a live input-mode switch. `mode`: `0` Gamepad, `1` Desktop, `0xff` toggle (against the *configured* mode). `reqid` is echoed in the `T` ack so the client can match requests; the mode is explicit, so a duplicated datagram can never toggle twice. The daemon validates Gamepad availability, applies the switch without interrupting the stream, persists the configured mode, and replies with a `T` ack carrying the *effective* mode. Older daemons drop unknown tags — clients must treat a missing ack as "unsupported" (2.5 s timeout). |
+| `T` | `'T' reqid mode 0` (4 B) | **WUP_THIN_PROTOCOL extension** — request a live input-mode switch. `mode`: `0` Gamepad, `1` Desktop, `0xff` toggle (against the *configured* mode). `reqid` is echoed in the `T` ack so the client can match requests; the mode is explicit, so a duplicated datagram can never toggle twice — and consecutive duplicate reqids are additionally deduplicated server-side (the recorded ack is replayed without re-applying, reset per session), which also protects `0xff` toggles. The daemon validates Gamepad availability, applies the switch without interrupting the stream, persists the configured mode, and replies with a `T` ack carrying the *effective* mode. Older daemons drop unknown tags — clients must treat a missing ack as "unsupported" (2.5 s timeout). |
 
 ## Encoding constraints (GamePad hardware decoder)
 
