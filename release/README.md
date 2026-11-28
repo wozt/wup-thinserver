@@ -38,6 +38,15 @@ sha256sum -c SHA256SUMS
 2. Boot the Pi on your LAN. The appliance listens for GamePad sessions on
    its dedicated UDP port (50004 for Pi 4, 50005 for Zero 2 W).
 
+### Storage
+
+The images ship a deliberately small root partition (≈3 GB Pi 4, ≈2 GB
+Zero 2 W — measured usage is ~1.5 GB) so flashing stays fast. On first
+boot `wup-growfs.service` grows the partition and filesystem to fill the
+card (online `growpart`/`parted` + `resize2fs`). Raspberry Pi OS images
+already expand via cloud-init; the Debian images use the same mechanism
+themselves.
+
 ### Accounts and SSH
 
 - `wup` / `wup` — appliance user, member of `sudo`
