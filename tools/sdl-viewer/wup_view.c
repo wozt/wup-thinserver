@@ -535,7 +535,9 @@ int main(int argc, char **argv) {
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
     window = SDL_CreateWindow("wup-view", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                               win_w, win_h, SDL_WINDOW_RESIZABLE);
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    /* Software renderer: SDL_RenderReadPixels is unreliable on accelerated
+     * backends (returns black), and 854x480 IYUV blits are cheap anyway. */
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, win_w, win_h);
     if (!window || !renderer || !texture) {
         fprintf(stderr, "SDL setup: %s\n", SDL_GetError()); return 1;
