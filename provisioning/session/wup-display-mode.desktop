@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Toggle 480p/720p
+Comment=Switch the streamed desktop resolution (reconnect the GamePad after)
+Exec=/usr/local/bin/wup-display-mode
+Icon=preferences-desktop-display
+Terminal=false
+Categories=Utility;

@@ -1,0 +1,35 @@
+#!/bin/sh
+# Toggle the KMS session output between 1280x720 and 854x480.
+#
+# The capture pipeline re-reads the CRTC mode on the next session start:
+# after switching, disconnect/reconnect the GamePad (or let the session
+# drop) so capture_start picks up the new mode. On Xvfb sessions this
+# script is a no-op.
+set -e
+
+export DISPLAY="${DISPLAY:-:99}"
+OUT="${WUP_KMS_OUTPUT:-HDMI-1}"
+
+xrandr --current 2>/dev/null | grep -q "connected" || {
+    echo "no X server on $DISPLAY" >&2; exit 1; }
+
+if xrandr --current | grep "$OUT" | grep -q "1280x720.*\*"; then
+    TARGET=480
+else
+    TARGET=720
+fi
+
+if [ "$TARGET" = 480 ]; then
+    LINE="$(cvt 854 480 60 2>/dev/null | awk '/Modeline/{print; exit}')"
+    [ -n "$LINE" ] || { echo "cvt unavailable: cannot generate 854x480 mode" >&2; exit 1; }
+    NAME="$(printf '%s' "$LINE" | sed -E 's/.*Modeline "([^"]+)".*/\1/')"
+    ARGS="$(printf '%s' "$LINE" | sed -E 's/.*Modeline "[^"]+" //')"
+    xrandr --newmode "$NAME" $ARGS 2>/dev/null || true
+    xrandr --addmode "$OUT" "$NAME" 2>/dev/null || true
+    xrandr --output "$OUT" --mode "$NAME"
+    echo "display mode -> 854x480 (reconnect the GamePad to re-capture)"
+else
+    xrandr --output "$OUT" --mode 1280x720
+    echo "display mode -> 1280x720 (reconnect the GamePad to re-capture)"
+fi
+xrandr --current | grep "^$OUT\| $OUT " || true

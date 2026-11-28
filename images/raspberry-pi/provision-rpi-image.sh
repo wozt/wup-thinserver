@@ -57,6 +57,15 @@ if [ "$PROFILE" = pi4 ]; then
         /etc/systemd/system/wup-xorg.service
     install -m 0644 /opt/wup/source/provisioning/session/wup-edid-1280x720.bin \
         /usr/lib/firmware/edid/wup-1280x720.bin
+    install -m 0755 /opt/wup/source/provisioning/session/wup-display-mode \
+        /usr/local/bin/wup-display-mode
+    install -m 0644 /opt/wup/source/provisioning/session/wup-display-mode.desktop \
+        /usr/share/applications/wup-display-mode.desktop
+    install -d -m 0755 /home/wup/Desktop
+    install -m 0755 -o wup -g wup /opt/wup/source/provisioning/session/wup-display-mode \
+        /home/wup/Desktop/wup-display-mode
+    install -m 0644 -o wup -g wup /opt/wup/source/provisioning/session/wup-display-mode.desktop \
+        /home/wup/Desktop/wup-display-mode.desktop
     if [ -f /usr/local/libexec/wupstreamd/wup-kms-helper ]; then
         setcap cap_sys_admin=ep /usr/local/libexec/wupstreamd/wup-kms-helper \
             || echo "warning: setcap failed on wup-kms-helper" >&2

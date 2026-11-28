@@ -304,6 +304,16 @@ wup_kms_t *wup_kms_open(const char *output,int sw,int sh,int sx,int sy,int x,int
 bad:
     fail("initialization failed; verify connector name, permissions and primary scanout"); wup_kms_close(k); return NULL;
 }
+/* Wait for the next vblank so the scanout BO is stable for the whole frame
+ * period: Xorg page-flips at vblank, so grabbing right after gives a
+ * complete frame instead of a mid-update tear. Non-fatal if unsupported. */
+static void wait_vblank(wup_kms_t *k) {
+    drmVBlank vb;
+    memset(&vb,0,sizeof vb);
+    vb.request.type=DRM_VBLANK_RELATIVE|DRM_VBLANK_NEXTONMISS;
+    vb.request.sequence=1;
+    drmWaitVBlank(k->fd,&vb);
+}
 void wup_kms_release(wup_kms_t *k) {
     if(!k||!k->bo) return;
     if(k->map) gbm_bo_unmap(k->bo,k->map);
@@ -312,6 +322,7 @@ void wup_kms_release(wup_kms_t *k) {
 int wup_kms_cpu(wup_kms_t *k,const uint8_t **pixels,int *stride) {
     if(!k||k->gpu) return -1;
     wup_kms_release(k);
+    wait_vblank(k);
     drmModeFB2 *fb=NULL;int prime[4], planes;
     if(export_frame(k,&fb,prime,&planes)) return -1;
     if(fb->flags & DRM_MODE_FB_MODIFIERS) {
@@ -336,6 +347,7 @@ int wup_kms_cpu(wup_kms_t *k,const uint8_t **pixels,int *stride) {
 }
 int wup_kms_egl(wup_kms_t *k,unsigned char *out,int x,int y,int w,int h) {
     if(!k||!k->gpu) return -1;
+    wait_vblank(k);
     drmModeFB2 *fb=NULL;int prime[4], planes;
     if(export_frame(k,&fb,prime,&planes)) return -1;
     if(!eglMakeCurrent(k->display,EGL_NO_SURFACE,EGL_NO_SURFACE,k->context)) {close_primes(prime);drmModeFreeFB2(fb);return egl_fail("make current for frame");}
