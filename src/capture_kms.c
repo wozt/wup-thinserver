@@ -59,6 +59,12 @@ static int connector_matches(const char *xname, const char *drmname) {
         snprintf(candidate,sizeof candidate,"HDMI-A-%u",index+1);
         return !strcmp(candidate,drmname);
     }
+    /* modesetting Xorg names outputs "HDMI-1" (1-based, no -A- infix) while
+     * DRM connectors are "HDMI-A-1". */
+    if (sscanf(xname,"HDMI-%u%c",&index,&tail)==1 && index<1000) {
+        snprintf(candidate,sizeof candidate,"HDMI-A-%u",index);
+        return !strcmp(candidate,drmname);
+    }
     return 0;
 }
 /* WUP_KMS_HELPER_0888: one helper per capture, private inherited socket. */
@@ -173,7 +179,17 @@ static int egl_fail(const char *stage) {
 }
 static int egl_setup(wup_kms_t *k) {
     char *node=drmGetRenderDeviceNameFromFd(k->fd);
-    if (!node) return fail("no render node for selected DRM device");
+    if (!node) {
+        /* vc4: the display device has no sibling render node — GL rendering
+           lives on the separate v3d render node. Fall back to the first
+           accessible render node. */
+        glob_t rg={0};
+        if(glob("/dev/dri/renderD[0-9]*",0,NULL,&rg)==0 && rg.gl_pathc) {
+            node=strdup(rg.gl_pathv[0]);
+        }
+        globfree(&rg);
+        if(!node) return fail("no render node for selected DRM device");
+    }
     k->render_fd=open(node,O_RDWR|O_CLOEXEC);
     fprintf(stderr,"[capture] KMS EGL render node %s: %s\n",node,k->render_fd<0?strerror(errno):"opened");
     free(node);

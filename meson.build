@@ -79,6 +79,16 @@ if gtk3.found()
     install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps')
 endif
 
+# Privileged KMS capture helper: spawned by wup-thinserver with inherited
+# socket/fd pair; exports the scanout framebuffer as DMA-BUFs. Installed
+# setcap cap_sys_admin=ep by the installers (see scripts/install-native.sh).
+executable('wup-kms-helper',
+  'src/kms_helper.c',
+  include_directories: [include_directories('src')],
+  dependencies: [drm],
+  install: true,
+  install_dir: get_option('libexecdir') / 'wupstreamd')
+
 install_data('config/settings.example.json',
   install_dir: get_option('datadir') / 'wup-thinserver')
 install_data('scripts/onboard-toggle.sh',

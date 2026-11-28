@@ -26,7 +26,7 @@ valid file unchanged.
 | `listen_address` | string | `""` | Numeric IPv4 address to bind the beacon socket to; empty = all interfaces. Restrict it (e.g. the LAN address) to limit exposure. Hostnames are not accepted — resolve to an IPv4 literal. |
 | `source_type` | int | `0` | `0` screen (whole display), `1` window, `2` region. ThinServer uses `0`. |
 | `aspect` | int | `1` | `0` stretch, `1` letterbox, `2` crop — how the desktop maps into 854x480. |
-| `capture_backend` | int | `0` | `0` XCB MIT-SHM, `1` XCB GetImage, `2` KMS CPU, `3` KMS EGL. Xvfb → `0` or `1`. |
+| `capture_backend` | int | `0` | `0` XCB MIT-SHM, `1` XCB GetImage, `2` KMS CPU, `3` KMS EGL. Xvfb → `0` or `1`. Backends `2`/`3` need the desktop on a real DRM scanout (`WUP_SESSION=kms`, provisioned automatically on the Pi 4 image) plus `/usr/local/libexec/wupstreamd/wup-kms-helper` with `cap_sys_admin=ep` and the desktop user in the `render` group. |
 | `cursor_visible` | int | `1` | Composite the current X11 cursor into the encoded frame. Applies to X11 and KMS CPU capture; KMS EGL does not expose a BGRA composition stage. |
 | `preset_name` / `crf` / `kbps` / `custom_quality` | | `Balanced`, 18, 10000 | x264 quality. Presets: Economy (23/4000), Balanced (18/10000), Max (14/20000). |
 | `low_latency` | int | `1` | zerolatency x264: no B-frames/lookahead. Keep `1` for the GamePad decoder. |

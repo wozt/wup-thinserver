@@ -159,6 +159,17 @@ else
     log "built and installed to /usr/local"
 fi
 
+# ---------- KMS capture helper ---------------------------------------------------------
+# wup-kms-helper exports the DRM scanout as DMA-BUFs for capture_backend 2/3.
+# It runs as the desktop user, so it needs cap_sys_admin to read framebuffers
+# it does not own. setcap lives in libcap2-bin (desktop-kms.txt on Pi images).
+KMS_HELPER=/usr/local/libexec/wupstreamd/wup-kms-helper
+if [ -f "$KMS_HELPER" ] && command -v setcap >/dev/null 2>&1; then
+    setcap cap_sys_admin=ep "$KMS_HELPER" \
+        && log "wup-kms-helper: cap_sys_admin=ep" \
+        || log "warning: setcap failed on wup-kms-helper"
+fi
+
 # ---------- session state dirs -------------------------------------------------------
 mkdir -p /tmp/pulse-runtime /tmp/xdg-runtime
 chmod 700 /tmp/pulse-runtime /tmp/xdg-runtime

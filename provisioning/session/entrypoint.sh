@@ -3,8 +3,9 @@
 #
 # Two phases:
 #   root   -- account provisioning (password, sudo), then drop privileges
-#   wup    -- the actual session: private D-Bus, Xvfb, PulseAudio, XFCE,
-#             Onboard, wup-thinserver daemon.
+#   wup    -- the actual session: private D-Bus, X server (Xvfb, or an
+#             externally provided KMS Xorg when WUP_SESSION=kms), PulseAudio,
+#             XFCE, Onboard, wup-thinserver daemon.
 #
 # Account provisioning (root phase, idempotent, runs on every start):
 #   Baseline appliance accounts: `wup`/`wup` with sudo, `root`/`wup`.
@@ -117,10 +118,17 @@ if [ -x /usr/local/bin/wup-migrate-settings ]; then
     /usr/local/bin/wup-migrate-settings || log "settings migration reported issues"
 fi
 
-# --- 1. Xvfb -----------------------------------------------------------------
-Xvfb "$DISPLAY" -screen 0 "${DESKTOP_WIDTH}x${DESKTOP_HEIGHT}x24" \
-    -nolisten tcp >/tmp/xvfb.log 2>&1 &
-PIDS="$PIDS $!"
+# --- 1. X server ---------------------------------------------------------------
+# WUP_SESSION=kms: an external unit (wup-xorg.service) already drives a real
+# KMS X server on $DISPLAY — the desktop renders into the DRM scanout so the
+# daemon can use capture_backend 2/3. Otherwise spawn the usual Xvfb.
+if [ "${WUP_SESSION:-xvfb}" = "kms" ]; then
+    log "KMS session: using existing X server on $DISPLAY"
+else
+    Xvfb "$DISPLAY" -screen 0 "${DESKTOP_WIDTH}x${DESKTOP_HEIGHT}x24" \
+        -nolisten tcp >/tmp/xvfb.log 2>&1 &
+    PIDS="$PIDS $!"
+fi
 
 # Wait for the display to accept connections.
 for i in $(seq 1 50); do
@@ -128,10 +136,10 @@ for i in $(seq 1 50); do
     sleep 0.1
 done
 if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
-    log "ERROR: Xvfb did not come up; see /tmp/xvfb.log"
+    log "ERROR: X server did not come up"
     exit 1
 fi
-log "Xvfb up on $DISPLAY (${DESKTOP_WIDTH}x${DESKTOP_HEIGHT})"
+log "X up on $DISPLAY (${DESKTOP_WIDTH}x${DESKTOP_HEIGHT})"
 
 # Keyboard layout for the session (us, fr, ...).
 if [ -n "${KEYBOARD_LAYOUT:-}" ]; then

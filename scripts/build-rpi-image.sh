@@ -46,6 +46,7 @@ mkdir -p "$PROJECT/config" "$PROJECT/layer" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/networks" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/scripts" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/packaging/systemd" \
+    "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/provisioning/session" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/prebuilt"
 
 # aarch64 host (e.g. an arm64 CI runner): build the payload natively;
@@ -76,6 +77,8 @@ printf '%s\n' "$PROFILE" > "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup
 cp "$ROOT/scripts/install-native.sh" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/scripts/"
 chmod 0755 "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/scripts/install-native.sh"
+cp -a "$ROOT/provisioning/session" \
+    "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/provisioning/"
 cp "$ROOT/packaging/systemd/wup-thinserver.service" \
     "$PROJECT/layer/wup-thinserver.rootfs-overlay/opt/wup/source/packaging/systemd/"
 cp -a "$ROOT/provisioning/firstboot" \
@@ -148,6 +151,8 @@ if [ "$PROFILE" = zero2w ]; then
     PACKAGE_FILES+=("$ROOT/provisioning/packages/desktop-zero2w.txt")
 else
     PACKAGE_FILES+=("$ROOT/provisioning/packages/desktop.txt")
+    # Pi 4 runs the KMS/EGL session (real Xorg on vc4) instead of Xvfb.
+    PACKAGE_FILES+=("$ROOT/provisioning/packages/desktop-kms.txt")
 fi
 {
     echo

@@ -41,6 +41,43 @@ KERNEL=="video[0-9]*", ATTR{name}=="Wii U GamePad Camera", GROUP="video", MODE="
 EOF
 printf '%s\n' uinput > /etc/modules-load.d/wup-thinserver-gamepad.conf
 
+# --- Pi 4 KMS/EGL session -----------------------------------------------------
+# The Pi 4 replaces Xvfb with a real Xorg on the vc4 modesetting driver so
+# the desktop renders into the DRM scanout; capture_backend 3 then imports
+# it as DMA-BUF and scales/converts on the V3D GPU (~3x less CPU than the
+# X11 path). wup-xorg.service fakes the headless HDMI connector through
+# debugfs and feeds a synthetic EDID — no monitor or kernel cmdline needed.
+# The Zero 2 W keeps the Xvfb session (no vc4-kms-v3d).
+if [ "$PROFILE" = pi4 ]; then
+    usermod -aG render wup
+    install -d -m 0755 /etc/X11 /usr/lib/firmware/edid
+    install -m 0644 /opt/wup/source/provisioning/session/xorg.conf.headless \
+        /etc/X11/xorg.conf.headless
+    install -m 0644 /opt/wup/source/provisioning/session/wup-xorg.service \
+        /etc/systemd/system/wup-xorg.service
+    install -m 0644 /opt/wup/source/provisioning/session/wup-edid-1280x720.bin \
+        /usr/lib/firmware/edid/wup-1280x720.bin
+    if [ -f /usr/local/libexec/wupstreamd/wup-kms-helper ]; then
+        setcap cap_sys_admin=ep /usr/local/libexec/wupstreamd/wup-kms-helper \
+            || echo "warning: setcap failed on wup-kms-helper" >&2
+    fi
+    install -d -m 0755 /etc/systemd/system/wup-thinserver.service.d
+    printf '%s\n' 'Environment=WUP_SESSION=kms' \
+        > /etc/systemd/system/wup-thinserver.service.d/30-kms.conf
+    python3 - /home/wup/.config/wup-thinserver/settings.json <<'PY' || true
+import json, sys
+p = sys.argv[1]
+try:
+    cfg = json.load(open(p))
+except Exception:
+    sys.exit(0)
+cfg["capture_backend"] = 3
+json.dump(cfg, open(p, "w"), indent=2)
+PY
+    chown wup:wup /home/wup/.config/wup-thinserver/settings.json 2>/dev/null || true
+    systemctl enable wup-xorg.service
+fi
+
 # Pre-provisioned WiFi networks (headless setup): iwd reads known-network
 # profiles from /var/lib/iwd/<SSID>.{psk,open,8021x}; networkd already runs
 # DHCP on wlan0, iwd only performs association. Profiles are staged by

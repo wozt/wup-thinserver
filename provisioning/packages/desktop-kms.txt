@@ -1,0 +1,7 @@
+# KMS/EGL session packages (Pi 4 only — appended to desktop.txt selection
+# by build-rpi-image.sh). Real Xorg on the vc4 modesetting driver replaces
+# Xvfb so the desktop renders into the DRM scanout; capture_backend 3 then
+# imports it as DMA-BUF and converts/scales on the V3D GPU.
+xserver-xorg
+xserver-xorg-video-modesetting
+libcap2-bin
