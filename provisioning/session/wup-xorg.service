@@ -4,16 +4,17 @@
 # The desktop must live on the real DRM scanout for capture_backend 2/3:
 # Xvfb is invisible to KMS. With no monitor attached, the vc4 HDMI
 # connector reports disconnected, so ExecStartPre fakes the connector
-# state through debugfs and feeds a synthetic 1280x720 EDID — no kernel
-# cmdline or config.txt changes required. wup-xorg owns :99; the session
-# entrypoint skips Xvfb when WUP_SESSION=kms.
+# state through debugfs and feeds a synthetic 1280x720 EDID — but only
+# when the connector is NOT already connected: a real display or HDMI
+# dummy plug provides its own EDID and needs no override. wup-xorg owns
+# :99; the session entrypoint skips Xvfb when WUP_SESSION=kms.
 Description=WUP KMS X server (headless vc4)
 Before=wup-thinserver.service
 After=systemd-udev-settle.service
 
 [Service]
 Type=simple
-ExecStartPre=/bin/sh -c 'mountpoint -q /sys/kernel/debug || mount -t debugfs none /sys/kernel/debug; for c in /sys/kernel/debug/dri/*/HDMI-A-1; do [ -d "$c" ] || continue; echo on > "$c/force" 2>/dev/null; [ -f /usr/lib/firmware/edid/wup-1280x720.bin ] && cat /usr/lib/firmware/edid/wup-1280x720.bin > "$c/edid_override" 2>/dev/null; done; true'
+ExecStartPre=/bin/sh -c 'mountpoint -q /sys/kernel/debug || mount -t debugfs none /sys/kernel/debug; i=0; while [ $i -lt 50 ] && ! ls /sys/kernel/debug/dri/*/HDMI-A-1 >/dev/null 2>&1; do i=$((i+1)); sleep 0.1; done; for c in /sys/class/drm/card*-HDMI-A-1; do [ "$(cat $c/status 2>/dev/null)" = connected ] && continue; n=${c##*/}; n=${n#card*-}; for d in /sys/kernel/debug/dri/*/$n; do [ -d "$d" ] || continue; echo on > "$d/force" 2>/dev/null; [ -f /usr/lib/firmware/edid/wup-1280x720.bin ] && cat /usr/lib/firmware/edid/wup-1280x720.bin > "$d/edid_override" 2>/dev/null; done; done; true'
 ExecStart=/usr/bin/Xorg :99 -config /etc/X11/xorg.conf.headless -logfile /tmp/xorg.log -noreset
 Restart=on-failure
 RestartSec=3

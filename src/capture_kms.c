@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <time.h>
 #include <sys/wait.h>
 #include <spawn.h>
 #include <signal.h>
@@ -67,6 +68,13 @@ static int connector_matches(const char *xname, const char *drmname) {
     }
     return 0;
 }
+static int kms_prof = -1;
+static double kms_t_export, kms_t_egl, kms_t_draw, kms_t_read, kms_t_send, kms_t_recv;
+static unsigned kms_n;
+static double kms_now(void) {
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec + ts.tv_nsec / 1e9;
+}
 /* WUP_KMS_HELPER_0888: one helper per capture, private inherited socket. */
 static void close_primes(int prime[4]) {
     for(int i=0;i<4;i++) if(prime[i]>=0) {close(prime[i]);prime[i]=-1;}
@@ -97,11 +105,15 @@ static int helper_start(wup_kms_t *k) {
 static int export_frame(wup_kms_t *k,drmModeFB2 **fb,int prime[4],int *planes) {
     *fb=NULL;*planes=0;for(int i=0;i<4;i++)prime[i]=-1;
     struct kms_request q={KMS_WIRE_MAGIC,k->crtc};
+    double ts=0,te=0;
+    if(kms_prof>0){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);ts=t.tv_sec+t.tv_nsec/1e9;}
     if(send(k->helper_sock,&q,sizeof q,MSG_NOSIGNAL)!=(ssize_t)sizeof q) return fail("helper request failed");
+    if(kms_prof>0){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);te=t.tv_sec+t.tv_nsec/1e9;kms_t_send+=te-ts;ts=te;}
     struct kms_reply r={0};struct iovec iov={&r,sizeof r};
     union {struct cmsghdr align;char bytes[CMSG_SPACE(4*sizeof(int))];} control={0};
     struct msghdr msg={0};msg.msg_iov=&iov;msg.msg_iovlen=1;msg.msg_control=control.bytes;msg.msg_controllen=sizeof control.bytes;
     ssize_t n=recvmsg(k->helper_sock,&msg,MSG_CMSG_CLOEXEC);
+    if(kms_prof>0){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);te=t.tv_sec+t.tv_nsec/1e9;kms_t_recv+=te-ts;}
     int count=0;
     if(n>=0) for(struct cmsghdr *h=CMSG_FIRSTHDR(&msg);h;h=CMSG_NXTHDR(&msg,h)) {
         if(h->cmsg_level!=SOL_SOCKET || h->cmsg_type!=SCM_RIGHTS || h->cmsg_len<CMSG_LEN(0)) continue;
@@ -345,12 +357,24 @@ int wup_kms_cpu(wup_kms_t *k,const uint8_t **pixels,int *stride) {
     if(!ptr||pitch<(uint32_t)k->w*4||pitch>INT_MAX) {wup_kms_release(k);return fail("GBM CPU mapping failed");}
     *pixels=ptr;*stride=(int)pitch;return 0;
 }
+static void kms_prof_flush(void) {
+    if (kms_prof <= 0) return;
+    if (++kms_n % 120) return;
+    fprintf(stderr, "[capture] KMS prof n=%u export=%.1fms (send=%.1f recv=%.1f) egl=%.1fms draw=%.1fms read=%.1fms\n",
+            kms_n, kms_t_export * 1e3, kms_t_send * 1e3, kms_t_recv * 1e3,
+            kms_t_egl * 1e3, kms_t_draw * 1e3, kms_t_read * 1e3);
+    kms_t_export = kms_t_egl = kms_t_draw = kms_t_read = kms_t_send = kms_t_recv = 0;
+}
 int wup_kms_egl(wup_kms_t *k,unsigned char *out,int x,int y,int w,int h) {
     if(!k||!k->gpu) return -1;
+    if (kms_prof < 0) kms_prof = getenv("WUP_KMS_PROF") ? 1 : 0;
+    double t0 = kms_now();
     wait_vblank(k);
     drmModeFB2 *fb=NULL;int prime[4], planes;
     if(export_frame(k,&fb,prime,&planes)) return -1;
+    kms_t_export += kms_now() - t0; t0 = kms_now();
     if(!eglMakeCurrent(k->display,EGL_NO_SURFACE,EGL_NO_SURFACE,k->context)) {close_primes(prime);drmModeFreeFB2(fb);return egl_fail("make current for frame");}
+    kms_t_egl += kms_now() - t0; t0 = kms_now();
     glBindFramebuffer(GL_FRAMEBUFFER,k->fbo);
     EGLint attrs[48]={EGL_WIDTH,(EGLint)fb->width,EGL_HEIGHT,(EGLint)fb->height,
         EGL_LINUX_DRM_FOURCC_EXT,(EGLint)fb->pixel_format};
@@ -397,9 +421,15 @@ int wup_kms_egl(wup_kms_t *k,unsigned char *out,int x,int y,int w,int h) {
         glDisable(GL_DITHER);
         glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,pos);
         glDisableVertexAttribArray(1);glDrawArrays(GL_TRIANGLE_STRIP,0,4);
-        glReadPixels(0,0,427,360,GL_RGBA,GL_UNSIGNED_BYTE,out);
         glEnable(GL_DITHER);
+    }
+    kms_t_draw += kms_now() - t0; t0 = kms_now();
+    if(k->yuv_program) {
+        glBindFramebuffer(GL_FRAMEBUFFER,k->yuv_fbo);
+        glReadPixels(0,0,427,360,GL_RGBA,GL_UNSIGNED_BYTE,out);
     } else glReadPixels(0,0,FW,FH,GL_RGBA,GL_UNSIGNED_BYTE,out);
+    kms_t_read += kms_now() - t0;
+    kms_prof_flush();
     ret=glGetError()==GL_NO_ERROR?0:-1;
     /* Drop the imported scanout reference before next frame. */
     glDeleteTextures(1,&k->texture);glGenTextures(1,&k->texture);

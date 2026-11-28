@@ -289,6 +289,10 @@ static char *make_response(control_t *control, gboolean ok, const char *message,
         json_builder_add_boolean_value(b, control->settings->camera_preview);
         json_builder_set_member_name(b, "camera_device");
         json_builder_add_string_value(b, control->settings->camera_device);
+        json_builder_set_member_name(b, "kbps");
+        json_builder_add_int_value(b, control->settings->kbps);
+        json_builder_set_member_name(b, "crf");
+        json_builder_add_int_value(b, control->settings->crf);
         json_builder_end_object(b);
     }
     json_builder_set_member_name(b, "state"); json_builder_begin_object(b);
@@ -311,6 +315,22 @@ static char *make_response(control_t *control, gboolean ok, const char *message,
     json_builder_add_boolean_value(b, gamepad_available);
     json_builder_set_member_name(b, "input_status");
     json_builder_add_string_value(b, input_status);
+    server_metrics_t metrics;
+    server_metrics_snapshot(control->server, &metrics);
+    if (metrics.valid) {
+        json_builder_set_member_name(b, "metrics"); json_builder_begin_object(b);
+        json_builder_set_member_name(b, "fps"); json_builder_add_double_value(b, metrics.fps);
+        json_builder_set_member_name(b, "fresh_fps"); json_builder_add_double_value(b, metrics.fresh_fps);
+        json_builder_set_member_name(b, "captured_fps"); json_builder_add_double_value(b, metrics.captured_fps);
+        json_builder_set_member_name(b, "dropped"); json_builder_add_int_value(b, metrics.dropped);
+        json_builder_set_member_name(b, "repeated"); json_builder_add_int_value(b, metrics.repeated);
+        json_builder_set_member_name(b, "capture_errors"); json_builder_add_int_value(b, metrics.capture_errors);
+        json_builder_set_member_name(b, "capture_ms"); json_builder_add_double_value(b, metrics.capture_ms);
+        json_builder_set_member_name(b, "x11_ms"); json_builder_add_double_value(b, metrics.x11_ms);
+        json_builder_set_member_name(b, "scale_ms"); json_builder_add_double_value(b, metrics.scale_ms);
+        json_builder_set_member_name(b, "frame_call_ms"); json_builder_add_double_value(b, metrics.frame_call_ms);
+        json_builder_end_object(b);
+    }
     camera_status_t camera;
     char preview_path[256];
     server_camera_snapshot(control->server, &camera, preview_path,
@@ -421,6 +441,24 @@ static char *handle_request(control_t *control, const char *data, gssize length)
         candidate.pad_brightness = level;
         candidate.pad_brightness_revision =
             control->settings->pad_brightness_revision + 1;
+    } else if (!strcmp(op, "set_quality")) {
+        /* Stream bitrate cap (kbps) for the next session: libwupstream reads
+           WUPSTREAM_KBPS once at wupstream_open, so a live change applies on
+           the next pad reconnect, not mid-stream. */
+        JsonNode *node = json_object_get_member(request, "kbps");
+        if (!node || !JSON_NODE_HOLDS_VALUE(node) ||
+            json_node_get_value_type(node) != G_TYPE_INT64) {
+            g_object_unref(parser);
+            return make_response(control, FALSE, "kbps must be an integer", FALSE);
+        }
+        int kbps = (int)json_node_get_int(node);
+        if (kbps < 0 || kbps > 50000) {
+            g_object_unref(parser);
+            return make_response(control, FALSE,
+                "kbps must be between 0 (auto) and 50000", FALSE);
+        }
+        candidate.kbps = kbps;
+        candidate.custom_quality = 1;
     } else {
         g_object_unref(parser);
         return make_response(control, FALSE, "unknown operation", FALSE);
@@ -450,7 +488,8 @@ static char *handle_request(control_t *control, const char *data, gssize length)
         g_clear_error(&error); g_object_unref(parser); return reply;
     }
     *control->settings = candidate;
-    if (!strcmp(op, "set_pad_brightness") || !strcmp(op, "set_camera"))
+    if (!strcmp(op, "set_pad_brightness") || !strcmp(op, "set_camera") ||
+        !strcmp(op, "set_quality"))
         server_sync_settings(control->server);   /* no input reload: held buttons stay down */
     else
         server_apply_input_keys(control->server);
@@ -458,6 +497,7 @@ static char *handle_request(control_t *control, const char *data, gssize length)
         !strcmp(op, "restore_defaults") ? "defaults restored" :
         !strcmp(op, "set_pad_brightness") ? "pad brightness updated" :
         !strcmp(op, "set_camera") ? "camera settings applied" :
+        !strcmp(op, "set_quality") ? "stream bitrate updated (applies on reconnect)" :
         "input settings applied",
         TRUE);
     g_object_unref(parser);

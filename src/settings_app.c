@@ -53,6 +53,7 @@ typedef struct {
     GtkWidget *mode, *mode_status, *conn_status, *deadzone, *sensitivity, *invert_y, *touch_mouse;
     GtkWidget *gyro_mode, *gyro_sens, *left_mode, *right_mode, *brightness;
     GtkWidget *brightness_value, *left_keys_box, *right_keys_box;
+    GtkWidget *bitrate, *bitrate_value;
     GtkWidget *stick_entries[8];
     GtkWidget *microphone, *volume;
     GtkWidget *camera_announce, *camera_preview, *camera_device;
@@ -61,6 +62,7 @@ typedef struct {
     input_cfg_t input;
     int audio_pad_to_pc, pad_volume_controls_pc;
     int pad_brightness;      /* -1 auto, 1..6 discrete levels */
+    int kbps;                /* stream bitrate cap, 0 = encoder default */
     int camera_announce_enabled, camera_preview_enabled;
     char camera_device_path[128];
     char camera_preview_path[256];
@@ -70,6 +72,7 @@ typedef struct {
     uint32_t camera_sequence;
     gboolean camera_pixels_valid;
     guint brightness_flush;  /* debounce id for live slider changes */
+    guint bitrate_flush;
     gboolean loading;
 } App;
 
@@ -280,6 +283,12 @@ static void widgets_from_config(App *app) {
     if (brightness == 0) g_strlcpy(brightness_text, "Auto (pad default)", sizeof brightness_text);
     else snprintf(brightness_text, sizeof brightness_text, "Level %d of 6", brightness);
     gtk_label_set_text(GTK_LABEL(app->brightness_value), brightness_text);
+    int kbps = app->kbps > 0 ? app->kbps : 10000;
+    gtk_range_set_value(GTK_RANGE(app->bitrate), kbps);
+    char kbps_text[48];
+    snprintf(kbps_text, sizeof kbps_text, "%d kbps%s", kbps,
+             app->kbps == 0 ? " (auto)" : "");
+    gtk_label_set_text(GTK_LABEL(app->bitrate_value), kbps_text);
     app->loading = FALSE;
 }
 
@@ -303,6 +312,8 @@ static gboolean load_current(App *app, gboolean quiet) {
         app->pad_volume_controls_pc = (int)json_object_get_int_member_with_default(config, "pad_volume_controls_pc", 1);
         app->pad_brightness = (int)json_object_get_int_member_with_default(config, "pad_brightness", -1);
         if (app->pad_brightness < -1 || app->pad_brightness > 6) app->pad_brightness = -1;
+        app->kbps = (int)json_object_get_int_member_with_default(config, "kbps", 0);
+        if (app->kbps < 0 || app->kbps > 50000) app->kbps = 0;
         app->camera_announce_enabled = json_object_get_boolean_member_with_default(
             config, "camera_announce", FALSE);
         app->camera_preview_enabled = json_object_get_boolean_member_with_default(
@@ -875,6 +886,47 @@ static void brightness_changed(GtkRange *range, gpointer data) {
     app->brightness_flush = g_timeout_add(400, brightness_flush, app);
 }
 
+/* Stream bitrate cap: changes are debounced and sent live through the
+   control socket as set_quality (persisted by the daemon). libwupstream
+   reads WUPSTREAM_KBPS at session start, so a new value applies on the
+   next GamePad reconnect, not mid-stream. */
+static gboolean bitrate_flush(gpointer data) {
+    App *app = data; app->bitrate_flush = 0;
+    int kbps = (int)gtk_range_get_value(GTK_RANGE(app->bitrate));
+    if (kbps == app->kbps) return G_SOURCE_REMOVE;
+    char request[96];
+    snprintf(request, sizeof request,
+        "{\"op\":\"set_quality\",\"kbps\":%d}", kbps);
+    GError *error = NULL;
+    char *reply = ipc_request(request, &error);
+    if (!reply) {
+        set_status(app, error->message, TRUE); g_clear_error(&error);
+        gtk_range_set_value(GTK_RANGE(app->bitrate),
+            app->kbps > 0 ? app->kbps : 10000);
+        return G_SOURCE_REMOVE;
+    }
+    JsonParser *parser; JsonObject *root;
+    if (!response_root(reply, &parser, &root, &error)) {
+        set_status(app, error->message, TRUE); g_clear_error(&error);
+        g_object_unref(parser); g_free(reply); return G_SOURCE_REMOVE;
+    }
+    app->kbps = kbps;
+    set_status(app, "Stream bitrate updated (applies on reconnect)", FALSE);
+    g_object_unref(parser); g_free(reply);
+    return G_SOURCE_REMOVE;
+}
+
+static void bitrate_changed(GtkRange *range, gpointer data) {
+    App *app = data;
+    if (app->loading) return;
+    int kbps = (int)gtk_range_get_value(range);
+    char text[48];
+    snprintf(text, sizeof text, "%d kbps", kbps);
+    gtk_label_set_text(GTK_LABEL(app->bitrate_value), text);
+    if (app->bitrate_flush) g_source_remove(app->bitrate_flush);
+    app->bitrate_flush = g_timeout_add(400, bitrate_flush, app);
+}
+
 static GtkWidget *display_frame(App *app) {
     GtkWidget *frame = frame_new("video-display-symbolic", "Display & audio");
     GtkWidget *grid = gtk_grid_new(); gtk_grid_set_row_spacing(GTK_GRID(grid), 3); gtk_grid_set_column_spacing(GTK_GRID(grid), 6);
@@ -886,14 +938,25 @@ static GtkWidget *display_frame(App *app) {
         gtk_scale_add_mark(GTK_SCALE(app->brightness), i, GTK_POS_BOTTOM, NULL);
     app->brightness_value = gtk_label_new("Auto (pad default)");
     gtk_widget_set_halign(app->brightness_value, GTK_ALIGN_START);
+    app->bitrate = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 1000, 10000, 250);
+    gtk_scale_set_draw_value(GTK_SCALE(app->bitrate), FALSE);
+    gtk_scale_set_value_pos(GTK_SCALE(app->bitrate), GTK_POS_RIGHT);
+    gtk_scale_add_mark(GTK_SCALE(app->bitrate), 2000, GTK_POS_BOTTOM, "2M");
+    gtk_scale_add_mark(GTK_SCALE(app->bitrate), 6000, GTK_POS_BOTTOM, "6M");
+    gtk_scale_add_mark(GTK_SCALE(app->bitrate), 10000, GTK_POS_BOTTOM, "10M");
+    app->bitrate_value = gtk_label_new("10000 kbps");
+    gtk_widget_set_halign(app->bitrate_value, GTK_ALIGN_START);
     app->microphone = check_wrapped("Forward GamePad microphone");
     app->volume = check_wrapped("Physical volume slider controls session audio");
     gtk_widget_set_hexpand(grid, TRUE);
     g_signal_connect(app->brightness, "value-changed", G_CALLBACK(brightness_changed), app);
+    g_signal_connect(app->bitrate, "value-changed", G_CALLBACK(bitrate_changed), app);
     grid_row(GTK_GRID(grid), 0, "Screen brightness", app->brightness);
     gtk_grid_attach(GTK_GRID(grid), app->brightness_value, 1, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), app->microphone, 0, 2, 2, 1);
-    gtk_grid_attach(GTK_GRID(grid), app->volume, 0, 3, 2, 1);
+    grid_row(GTK_GRID(grid), 2, "Stream bitrate", app->bitrate);
+    gtk_grid_attach(GTK_GRID(grid), app->bitrate_value, 1, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), app->microphone, 0, 4, 2, 1);
+    gtk_grid_attach(GTK_GRID(grid), app->volume, 0, 5, 2, 1);
     gtk_container_add(GTK_CONTAINER(frame), grid);
     return frame;
 }
@@ -1090,6 +1153,7 @@ static void app_activate(GtkApplication *application, gpointer data) {
     App *app = data; settings_t defaults; settings_defaults(&defaults); app->input = defaults.input;
     app->audio_pad_to_pc = defaults.audio_pad_to_pc; app->pad_volume_controls_pc = defaults.pad_volume_controls_pc;
     app->pad_brightness = -1;
+    app->kbps = 0;
     app->camera_announce_enabled = defaults.camera_announce;
     app->camera_preview_enabled = defaults.camera_preview;
     g_strlcpy(app->camera_device_path, defaults.camera_device,
