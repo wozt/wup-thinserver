@@ -400,6 +400,20 @@ wupstream *wupstream_open_port(const char *ip, int port, const char *bind_addr,
         else:
             raise RuntimeError(f"Unexpected pinned source: {code}")
 
+    # Never let a slow or vanished peer stall the whole stream loop on
+    # transmit: UDP sendto blocks once the socket buffer fills, starving
+    # pump() and the input watchdog (observed: session stuck "streaming"
+    # forever, Recv-Q growing, new beacons ignored). Dropping is safe —
+    # video fragments are NACK-recovered and 'I' reports are redundant.
+    put_old = ("static void put(wupstream *w, const void *d, int n) { "
+               "sendto(w->sock, (const char *)d, n, 0, "
+               "(struct sockaddr *)&w->pad, sizeof w->pad); }")
+    put_new = put_old.replace(", n, 0,", ", n, MSG_DONTWAIT,")
+    if put_new not in text:
+        if text.count(put_old) != 1:
+            raise RuntimeError(f"Unexpected pinned source: {code}")
+        text = text.replace(put_old, put_new, 1)
+
     code.write_text(text)
 
 
